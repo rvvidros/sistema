@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alô Serralheiro - Sistema Interno</title>
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Configuração -->
+  <script src="config.js"></script>
+  <style>
+    /* Reset e fonte */
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background: #f4f7fc; display: flex; min-height: 100vh; }
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      background: #1a2a4a;
+      color: #fff;
+      padding: 20px 15px;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+    }
+    .sidebar h2 { font-size: 1.2rem; margin-bottom: 30px; letter-spacing: 1px; }
+    .sidebar .user { font-size: 0.9rem; opacity: 0.8; margin-bottom: 20px; }
+    .sidebar nav a {
+      display: block;
+      color: #cbd5e1;
+      text-decoration: none;
+      padding: 10px 12px;
+      border-radius: 6px;
+      margin-bottom: 5px;
+      font-weight: 500;
+      transition: 0.2s;
+      cursor: pointer;
+    }
+    .sidebar nav a:hover, .sidebar nav a.active {
+      background: #2a3f62;
+      color: #fff;
+    }
+    .sidebar .logout {
+      margin-top: auto;
+      background: #c0392b;
+      border: none;
+      color: #fff;
+      padding: 10px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .sidebar .logout:hover { background: #e74c3c; }
+    /* Conteúdo */
+    .main {
+      flex: 1;
+      padding: 30px 40px;
+      overflow-y: auto;
+    }
+    .page-title { font-size: 1.8rem; margin-bottom: 25px; color: #1a2a4a; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      padding: 20px;
+      margin-bottom: 25px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+    .card-header h3 { font-size: 1.25rem; color: #1a2a4a; }
+    .btn {
+      background: #1a2a4a;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn:hover { background: #2a3f62; }
+    .btn-success { background: #27ae60; }
+    .btn-success:hover { background: #2ecc71; }
+    .btn-danger { background: #c0392b; }
+    .btn-danger:hover { background: #e74c3c; }
+    .btn-secondary { background: #7f8c8d; }
+    .btn-secondary:hover { background: #95a5a6; }
+    .btn-sm { padding: 4px 12px; font-size: 0.85rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef2f7;
+    }
+    th { background: #f8fafc; font-weight: 600; color: #1a2a4a; }
+    .clickable { cursor: pointer; }
+    .clickable:hover { background: #f1f5f9; }
+    .tab-bar {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #eef2f7;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      font-weight: 500;
+      color: #4a5a7a;
+      transition: 0.2s;
+    }
+    .tab.active {
+      border-bottom-color: #1a2a4a;
+      color: #1a2a4a;
+    }
+    .tab:hover { background: #f1f5f9; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .form-group {
+      margin-bottom: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .form-group label {
+      font-weight: 500;
+      min-width: 100px;
+      color: #1a2a4a;
+    }
+    .form-group input, .form-group select {
+      padding: 8px 12px;
+      border: 1px solid #dce2ec;
+      border-radius: 6px;
+      flex: 1;
+      min-width: 150px;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: #1a2a4a;
+    }
+    .flex-row { display: flex; gap: 15px; flex-wrap: wrap; }
+    .flex-1 { flex: 1; }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.4);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal.show { display: flex; }
+    .modal-box {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-box h3 { margin-bottom: 20px; }
+    .modal-box .form-group { margin-bottom: 12px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1a2a4a;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      display: none;
+    }
+    .toast.show { display: block; }
+    .empty-message { color: #7f8c8d; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>🔧 Alô Serralheiro</h2>
+  <div class="user" id="userName">Usuário</div>
+  <nav>
+    <a class="active" data-view="clientes">Clientes</a>
+    <a data-view="obras" style="display:none;">Obras</a>
+    <a data-view="detalhes" style="display:none;">Detalhes</a>
+  </nav>
+  <button class="logout" id="logoutBtn">Sair</button>
+</div>
+
+<!-- Conteúdo principal -->
+<div class="main" id="mainContent">
+  <!-- Clientes -->
+  <div id="viewClientes">
+    <div class="page-title">Clientes</div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Lista de Clientes</h3>
+        <button class="btn" id="novoClienteBtn">+ Novo Cliente</button>
+      </div>
+      <table>
+        <thead><tr><th>Nome</th><th>Telefone</th><th>Email</th><th>Obras</th><th></th></tr></thead>
+        <tbody id="clientesList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Obras -->
+  <div id="viewObras" style="display:none;">
+    <div class="page-title">Obras de <span id="clienteNomeObras"></span></div>
+    <button class="btn btn-secondary" id="voltarClientesBtn">← Voltar</button>
+    <div class="card" style="margin-top:15px;">
+      <div class="card-header">
+        <h3>Obras</h3>
+        <button class="btn" id="novaObraBtn">+ Nova Obra</button>
+      </div>
+      <table>
+        <thead><tr><th>Código</th><th>Nome</th><th>Status</th><th>Orçamento</th><th></th></tr></thead>
+        <tbody id="obrasList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Detalhes da Obra -->
+  <div id="viewDetalhes" style="display:none;">
+    <div class="page-title">Obra: <span id="obraNomeDetalhes"></span></div>
+    <button class="btn btn-secondary" id="voltarObrasBtn">← Voltar</button>
+    <div class="card" style="margin-top:15px;">
+      <div class="tab-bar">
+        <span class="tab active" data-tab="tipologias">Tipologias</span>
+        <span class="tab" data-tab="coats">Lista de Compras</span>
+        <span class="tab" data-tab="budgets">Orçamento</span>
+        <span class="tab" data-tab="orders">Pedido</span>
+      </div>
+
+      <!-- Aba Tipologias -->
+      <div class="tab-content active" id="tabTipologias">
+        <div class="card-header">
+          <h3>Tipologias da Obra</h3>
+          <button class="btn" id="adicionarTipologiaBtn">+ Adicionar</button>
+        </div>
+        <table>
+          <thead><tr><th>Tipologia</th><th>Parâmetros</th><th></th></tr></thead>
+          <tbody id="tipologiasList"></tbody>
+        </table>
+      </div>
+
+      <!-- Aba Coats -->
+      <div class="tab-content" id="tabCoats">
+        <div class="card-header">
+          <h3>Lista de Compras (Materiais)</h3>
+          <button class="btn btn-success" id="gerarCoatsBtn">🔃 Gerar Lista</button>
+        </div>
+        <table>
+          <thead><tr><th>Material</th><th>Cor</th><th>Qtde</th><th>Unit.</th><th>Custo</th></tr></thead>
+          <tbody id="coatsList"></tbody>
+        </table>
+      </div>
+
+      <!-- Aba Orçamento -->
+      <div class="tab-content" id="tabBudgets">
+        <div class="card-header">
+          <h3>Orçamento</h3>
+          <button class="btn btn-success" id="gerarBudgetBtn">📄 Gerar Orçamento</button>
+        </div>
+        <div id="budgetDisplay" style="background:#f8fafc; padding:15px; border-radius:8px;">
+          <p><strong>Custo Produção:</strong> <span id="budgetProdCost">0,00</span></p>
+          <p><strong>Custo Instalação:</strong> <span id="budgetInstCost">0,00</span></p>
+          <p><strong>Ganho (%):</strong> <span id="budgetGain">0,00</span></p>
+          <p><strong>Resumo:</strong> <span id="budgetSummary">-</span></p>
+          <div><strong>Componentes:</strong></div>
+          <ul id="budgetComponents"></ul>
+        </div>
+      </div>
+
+      <!-- Aba Pedido -->
+      <div class="tab-content" id="tabOrders">
+        <div class="card-header">
+          <h3>Pedido de Venda</h3>
+          <button class="btn btn-success" id="gerarOrderBtn">📦 Gerar Pedido</button>
+        </div>
+        <div id="orderDisplay" style="background:#f8fafc; padding:15px; border-radius:8px;">
+          <p><strong>Código:</strong> <span id="orderCode">-</span></p>
+          <p><strong>Total:</strong> <span id="orderTotal">0,00</span></p>
+          <p><strong>Componentes (custo próprio):</strong></p>
+          <ul id="orderComponents"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h3 id="modalTitle">Título</h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modalCancel">Cancelar</button>
+      <button class="btn" id="modalConfirm">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  (function() {
+    // =========================================================
+    // CONFIGURAÇÃO SUPABASE
+    // =========================================================
+    const supabase = window.supabase.createClient(
+      SUPABASE_CONFIG.url,
+      SUPABASE_CONFIG.anonKey
+    );
+
+    // =========================================================
+    // ESTADO GLOBAL
+    // =========================================================
+    let currentUser = null;
+    let currentClientId = null;
+    let currentWorkId = null;
+    let catalogTypologies = [];
+
+    // =========================================================
+    // AUXILIARES
+    // =========================================================
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.background = isError ? '#c0392b' : '#1a2a4a';
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function setView(view) {
+      document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+      const link = document.querySelector(`.sidebar nav a[data-view="${view}"]`);
+      if (link) link.classList.add('active');
+      document.querySelectorAll('#mainContent > div[id^="view"]').forEach(div => div.style.display = 'none');
+      document.getElementById(`view${view.charAt(0).toUpperCase() + view.slice(1)}`).style.display = 'block';
+    }
+
+    function showModal(title, bodyHTML, onConfirm) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalBody').innerHTML = bodyHTML;
+      document.getElementById('modal').classList.add('show');
+      const confirmBtn = document.getElementById('modalConfirm');
+      const cancelBtn = document.getElementById('modalCancel');
+      // Remove listeners antigos
+      const newConfirm = confirmBtn.cloneNode(true);
+      const newCancel = cancelBtn.cloneNode(true);
+      confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+      cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+      newCancel.addEventListener('click', () => document.getElementById('modal').classList.remove('show'));
+      newConfirm.addEventListener('click', () => {
+        onConfirm();
+        document.getElementById('modal').classList.remove('show');
+      });
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('show');
+    }
+
+    // =========================================================
+    // AUTENTICAÇÃO
+    // =========================================================
+    async function login(email, password) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        showToast('Erro no login: ' + error.message, true);
+        return false;
+      }
+      currentUser = data.user;
+      document.getElementById('userName').textContent = currentUser.email;
+      // Buscar perfil
+      const { data: profile } = await supabase.from('profiles').select('name').eq('id', currentUser.id).single();
+      if (profile && profile.name) document.getElementById('userName').textContent = profile.name;
+      // Carregar clientes
+      carregarClientes();
+      setView('clientes');
+      // Mostrar links
+      document.querySelector('.sidebar nav a[data-view="obras"]').style.display = 'none';
+      document.querySelector('.sidebar nav a[data-view="detalhes"]').style.display = 'none';
+      return true;
+    }
+
+    async function logout() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      currentClientId = null;
+      currentWorkId = null;
+      document.getElementById('userName').textContent = 'Usuário';
+      // Mostrar formulário de login novamente
+      showModal('Login', `
+        <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="email@exemplo.com"></div>
+        <div class="form-group"><label>Senha</label><input type="password" id="loginPassword" placeholder="******"></div>
+      `, async () => {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        if (!email || !password) { showToast('Preencha todos os campos', true); return; }
+        await login(email, password);
+      });
+    }
+
+    // Verificar sessão ao carregar
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+        document.getElementById('userName').textContent = currentUser.email;
+        await carregarClientes();
+        setView('clientes');
+        // Carregar catálogo de tipologias
+        const { data: cat } = await supabase.from('typologies_catalog').select('*');
+        catalogTypologies = cat || [];
+      } else {
+        // Exibir modal de login
+        showModal('Login', `
+          <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="email@exemplo.com"></div>
+          <div class="form-group"><label>Senha</label><input type="password" id="loginPassword" placeholder="******"></div>
+        `, async () => {
+          const email = document.getElementById('loginEmail').value;
+          const password = document.getElementById('loginPassword').value;
+          if (!email || !password) { showToast('Preencha todos os campos', true); return; }
+          await login(email, password);
+        });
+      }
+    }
+
+    // =========================================================
+    // CLIENTES
+    // =========================================================
+    async function carregarClientes() {
+      const { data, error } = await supabase.from('clients').select('*').order('name');
+      if (error) { showToast('Erro ao carregar clientes', true); return; }
+      const tbody = document.getElementById('clientesList');
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-message">Nenhum cliente cadastrado</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(c => `
+        <tr class="clickable" data-client-id="${c.id}">
+          <td>${c.name}</td>
+          <td>${c.phone || '-'}</td>
+          <td>${c.email || '-'}</td>
+          <td><span class="badge">${c.works_count || 0}</span></td>
+          <td><button class="btn btn-sm btn-success verObrasBtn" data-client-id="${c.id}">Ver Obras</button></td>
+        </tr>
+      `).join('');
+
+      // Eventos de clique
+      document.querySelectorAll('.verObrasBtn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const clientId = btn.dataset.clientId;
+          abrirObras(clientId);
+        });
+      });
+      document.querySelectorAll('#clientesList .clickable').forEach(row => {
+        row.addEventListener('click', () => {
+          const clientId = row.dataset.clientId;
+          abrirObras(clientId);
+        });
+      });
+    }
+
+    async function abrirObras(clientId) {
+      currentClientId = clientId;
+      // Buscar nome do cliente
+      const { data: client } = await supabase.from('clients').select('name').eq('id', clientId).single();
+      document.getElementById('clienteNomeObras').textContent = client?.name || 'Cliente';
+      // Carregar obras
+      const { data: works, error } = await supabase.from('works').select('*').eq('client_id', clientId).order('created_at', { ascending: false });
+      if (error) { showToast('Erro ao carregar obras', true); return; }
+      const tbody = document.getElementById('obrasList');
+      if (!works || works.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-message">Nenhuma obra para este cliente</td></tr>`;
+      } else {
+        tbody.innerHTML = works.map(w => `
+          <tr class="clickable" data-work-id="${w.id}">
+            <td>${w.code || '-'}</td>
+            <td>${w.name}</td>
+            <td>${w.status}</td>
+            <td>R$ ${(w.budget_price || 0).toFixed(2)}</td>
+            <td><button class="btn btn-sm btn-success verDetalhesBtn" data-work-id="${w.id}">Detalhes</button></td>
+          </tr>
+        `).join('');
+        document.querySelectorAll('.verDetalhesBtn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            abrirDetalhes(btn.dataset.workId);
+          });
+        });
+        document.querySelectorAll('#obrasList .clickable').forEach(row => {
+          row.addEventListener('click', () => abrirDetalhes(row.dataset.workId));
+        });
+      }
+      setView('obras');
+      document.querySelector('.sidebar nav a[data-view="obras"]').style.display = 'block';
+      document.querySelector('.sidebar nav a[data-view="detalhes"]').style.display = 'none';
+      document.querySelector('.sidebar nav a[data-view="obras"]').classList.add('active');
+    }
+
+    // =========================================================
+    // DETALHES DA OBRA
+    // =========================================================
+    async function abrirDetalhes(workId) {
+      currentWorkId = workId;
+      const { data: work } = await supabase.from('works').select('*').eq('id', workId).single();
+      document.getElementById('obraNomeDetalhes').textContent = work?.name || 'Obra';
+      setView('detalhes');
+      document.querySelector('.sidebar nav a[data-view="detalhes"]').style.display = 'block';
+      document.querySelector('.sidebar nav a[data-view="detalhes"]').classList.add('active');
+      // Carregar abas
+      carregarTipologias(workId);
+      carregarCoats(workId);
+      carregarBudget(workId);
+      carregarOrder(workId);
+    }
+
+    // ---- Aba Tipologias ----
+    async function carregarTipologias(workId) {
+      const { data, error } = await supabase
+        .from('work_typologies')
+        .select('*, typologies_catalog(name)')
+        .eq('work_id', workId);
+      if (error) { showToast('Erro ao carregar tipologias', true); return; }
+      const tbody = document.getElementById('tipologiasList');
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="empty-message">Nenhuma tipologia adicionada</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(t => `
+        <tr>
+          <td>${t.typologies_catalog?.name || t.typology_id}</td>
+          <td>${JSON.stringify(t.parameters)}</td>
+          <td><button class="btn btn-sm btn-danger removerTipologiaBtn" data-id="${t.id}">Remover</button></td>
+        </tr>
+      `).join('');
+      document.querySelectorAll('.removerTipologiaBtn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remover esta tipologia?')) return;
+          const { error } = await supabase.from('work_typologies').delete().eq('id', btn.dataset.id);
+          if (error) showToast('Erro ao remover', true);
+          else { showToast('Removida'); carregarTipologias(workId); }
+        });
+      });
+    }
+
+    function mostrarFormAdicionarTipologia() {
+      if (catalogTypologies.length === 0) {
+        showToast('Nenhuma tipologia cadastrada no catálogo', true);
+        return;
+      }
+      let options = catalogTypologies.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+      let html = `
+        <div class="form-group">
+          <label>Tipologia</label>
+          <select id="novaTipologiaSelect">${options}</select>
+        </div>
+        <div id="parametrosDinamicos"></div>
+      `;
+      showModal('Adicionar Tipologia', html, async () => {
+        const typologyId = document.getElementById('novaTipologiaSelect').value;
+        // Coletar parâmetros dos inputs dinâmicos
+        const params = {};
+        document.querySelectorAll('#parametrosDinamicos input, #parametrosDinamicos select').forEach(el => {
+          params[el.dataset.param] = el.value;
+        });
+        if (!typologyId) { showToast('Selecione uma tipologia', true); return; }
+        const { error } = await supabase.from('work_typologies').insert({
+          work_id: currentWorkId,
+          typology_id: typologyId,
+          parameters: params
+        });
+        if (error) { showToast('Erro ao adicionar: ' + error.message, true); return; }
+        showToast('Tipologia adicionada!');
+        carregarTipologias(currentWorkId);
+        closeModal();
+      });
+
+      // Quando mudar a tipologia, atualizar campos dinâmicos
+      document.getElementById('novaTipologiaSelect').addEventListener('change', function() {
+        const selected = catalogTypologies.find(t => t.id === this.value);
+        const container = document.getElementById('parametrosDinamicos');
+        if (!selected || !selected.default_params) {
+          container.innerHTML = '<p class="empty-message">Nenhum parâmetro definido para esta tipologia</p>';
+          return;
+        }
+        const defaultParams = typeof selected.default_params === 'string' 
+          ? JSON.parse(selected.default_params) 
+          : selected.default_params;
+        let html = '';
+        for (const [key, value] of Object.entries(defaultParams)) {
+          html += `
+            <div class="form-group">
+              <label>${key.charAt(0).toUpperCase() + key.slice(1)}</label>
+              <input type="text" data-param="${key}" value="${value}" placeholder="${key}">
+            </div>
+          `;
+        }
+        container.innerHTML = html;
+      });
+      // Disparar change para carregar os parâmetros da primeira opção
+      document.getElementById('novaTipologiaSelect').dispatchEvent(new Event('change'));
+    }
+
+    // ---- Aba Coats ----
+    async function carregarCoats(workId) {
+      const { data, error } = await supabase.from('coats').select('*').eq('work_id', workId);
+      if (error) { showToast('Erro ao carregar lista de compras', true); return; }
+      const tbody = document.getElementById('coatsList');
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-message">Nenhum material gerado. Clique em "Gerar Lista".</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(c => `
+        <tr>
+          <td>${c.productionable || '-'}</td>
+          <td>${c.colorable || '-'}</td>
+          <td>${c.quantity || 0}</td>
+          <td>${c.unit || '-'}</td>
+          <td>R$ ${(c.cost || 0).toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function gerarCoats(workId) {
+      // Placeholder: gerar alguns itens de exemplo baseados nas tipologias
+      // Aqui você implementaria a lógica real de cálculo
+      const { data: tipologias } = await supabase
+        .from('work_typologies')
+        .select('*, typologies_catalog(name, slug)')
+        .eq('work_id', workId);
+
+      if (!tipologias || tipologias.length === 0) {
+        showToast('Adicione tipologias primeiro', true);
+        return;
+      }
+
+      // Exemplo: criar um coat para cada tipologia com valores fictícios
+      const coats = tipologias.map(t => ({
+        work_id: workId,
+        productionable: `Perfil ${t.typologies_catalog?.name || 'Genérico'}`,
+        colorable: t.parameters?.color || 'Branco',
+        cost: 150.00,
+        quantity: 1,
+        unit: 'un',
+        type: 'profile'
+      }));
+
+      // Limpar coats antigos e inserir novos
+      await supabase.from('coats').delete().eq('work_id', workId);
+      const { error } = await supabase.from('coats').insert(coats);
+      if (error) { showToast('Erro ao gerar lista: ' + error.message, true); return; }
+      showToast('Lista de compras gerada!');
+      carregarCoats(workId);
+    }
+
+    // ---- Aba Orçamento ----
+    async function carregarBudget(workId) {
+      const { data, error } = await supabase.from('budgets').select('*').eq('work_id', workId).order('created_at', { ascending: false }).limit(1);
+      if (error || !data || data.length === 0) {
+        document.getElementById('budgetProdCost').textContent = '0,00';
+        document.getElementById('budgetInstCost').textContent = '0,00';
+        document.getElementById('budgetGain').textContent = '0,00';
+        document.getElementById('budgetSummary').textContent = '-';
+        document.getElementById('budgetComponents').innerHTML = '';
+        return;
+      }
+      const b = data[0];
+      document.getElementById('budgetProdCost').textContent = (b.production_cost || 0).toFixed(2);
+      document.getElementById('budgetInstCost').textContent = (b.installation_cost || 0).toFixed(2);
+      document.getElementById('budgetGain').textContent = (b.gain_percentage || 0).toFixed(2);
+      document.getElementById('budgetSummary').textContent = b.summary || '-';
+      const comps = b.components || [];
+      document.getElementById('budgetComponents').innerHTML = comps.map(c => `<li>${c}</li>`).join('');
+    }
+
+    async function gerarBudget(workId) {
+      // Exemplo: somar custos dos coats
+      const { data: coats } = await supabase.from('coats').select('cost').eq('work_id', workId);
+      const total = coats ? coats.reduce((acc, c) => acc + (c.cost || 0), 0) : 0;
+      const install = total * 0.15;
+      const gain = 10;
+      const components = ['Mão de obra', 'Transporte', 'Acabamento'];
+      const { error } = await supabase.from('budgets').insert({
+        work_id: workId,
+        production_cost: total,
+        installation_cost: install,
+        gain_percentage: gain,
+        summary: `Orçamento gerado em ${new Date().toLocaleDateString()}`,
+        components: components
+      });
+      if (error) { showToast('Erro ao gerar orçamento: ' + error.message, true); return; }
+      showToast('Orçamento gerado!');
+      carregarBudget(workId);
+    }
+
+    // ---- Aba Pedido ----
+    async function carregarOrder(workId) {
+      const { data, error } = await supabase.from('orders').select('*').eq('work_id', workId).order('created_at', { ascending: false }).limit(1);
+      if (error || !data || data.length === 0) {
+        document.getElementById('orderCode').textContent = '-';
+        document.getElementById('orderTotal').textContent = '0,00';
+        document.getElementById('orderComponents').innerHTML = '';
+        return;
+      }
+      const o = data[0];
+      document.getElementById('orderCode').textContent = o.code || '-';
+      document.getElementById('orderTotal').textContent = (o.total || 0).toFixed(2);
+      const comps = o.components_own_cost || [];
+      document.getElementById('orderComponents').innerHTML = comps.map(c => `<li>${c}</li>`).join('');
+    }
+
+    async function gerarOrder(workId) {
+      // Buscar orçamento mais recente
+      const { data: budgets } = await supabase.from('budgets').select('*').eq('work_id', workId).order('created_at', { ascending: false }).limit(1);
+      if (!budgets || budgets.length === 0) {
+        showToast('Gere um orçamento primeiro', true);
+        return;
+      }
+      const budget = budgets[0];
+      const code = `${new Date().toISOString().slice(2,10).replace(/-/g,'')}-${String(Math.floor(Math.random()*100)).padStart(2,'0')}`;
+      const total = (budget.production_cost || 0) + (budget.installation_cost || 0);
+      const comps = ['Perfis', 'Vidros', 'Ferragens'];
+      const { error } = await supabase.from('orders').insert({
+        work_id: workId,
+        code: code,
+        total: total,
+        components_own_cost: comps
+      });
+      if (error) { showToast('Erro ao gerar pedido: ' + error.message, true); return; }
+      showToast('Pedido gerado! Código: ' + code);
+      carregarOrder(workId);
+    }
+
+    // =========================================================
+    // EVENTOS DE NAVEGAÇÃO E AÇÕES
+    // =========================================================
+    // Sidebar links
+    document.querySelectorAll('.sidebar nav a').forEach(link => {
+      link.addEventListener('click', function() {
+        const view = this.dataset.view;
+        if (view === 'clientes') {
+          setView('clientes');
+          carregarClientes();
+        } else if (view === 'obras' && currentClientId) {
+          abrirObras(currentClientId);
+        } else if (view === 'detalhes' && currentWorkId) {
+          abrirDetalhes(currentWorkId);
+        }
+      });
+    });
+
+    // Voltar
+    document.getElementById('voltarClientesBtn').addEventListener('click', () => {
+      setView('clientes');
+      carregarClientes();
+      document.querySelector('.sidebar nav a[data-view="obras"]').style.display = 'none';
+      document.querySelector('.sidebar nav a[data-view="detalhes"]').style.display = 'none';
+    });
+    document.getElementById('voltarObrasBtn').addEventListener('click', () => {
+      if (currentClientId) abrirObras(currentClientId);
+      else setView('obras');
+    });
+
+    // Novo Cliente
+    document.getElementById('novoClienteBtn').addEventListener('click', () => {
+      showModal('Novo Cliente', `
+        <div class="form-group"><label>Nome</label><input type="text" id="novoClienteNome" placeholder="Nome completo"></div>
+        <div class="form-group"><label>Telefone</label><input type="text" id="novoClienteTelefone" placeholder="(00) 00000-0000"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="novoClienteEmail" placeholder="email@exemplo.com"></div>
+        <div class="form-group"><label>Endereço</label><input type="text" id="novoClienteEndereco" placeholder="Rua, nº, bairro..."></div>
+      `, async () => {
+        const name = document.getElementById('novoClienteNome').value;
+        if (!name) { showToast('Nome é obrigatório', true); return; }
+        const { error } = await supabase.from('clients').insert({
+          name,
+          phone: document.getElementById('novoClienteTelefone').value,
+          email: document.getElementById('novoClienteEmail').value,
+          address: document.getElementById('novoClienteEndereco').value
+        });
+        if (error) { showToast('Erro: ' + error.message, true); return; }
+        showToast('Cliente criado!');
+        carregarClientes();
+        closeModal();
+      });
+    });
+
+    // Nova Obra
+    document.getElementById('novaObraBtn').addEventListener('click', () => {
+      showModal('Nova Obra', `
+        <div class="form-group"><label>Nome</label><input type="text" id="novaObraNome" placeholder="Ex: Residência Silva"></div>
+        <div class="form-group"><label>Código</label><input type="text" id="novaObraCodigo" placeholder="Código opcional"></div>
+        <div class="form-group"><label>Status</label>
+          <select id="novaObraStatus">
+            <option value="rascunho">Rascunho</option>
+            <option value="orcado">Orçado</option>
+            <option value="aprovado">Aprovado</option>
+            <option value="vendido">Vendido</option>
+          </select>
+        </div>
+      `, async () => {
+        const name = document.getElementById('novaObraNome').value;
+        if (!name) { showToast('Nome é obrigatório', true); return; }
+        const { error } = await supabase.from('works').insert({
+          client_id: currentClientId,
+          name,
+          code: document.getElementById('novaObraCodigo').value || null,
+          status: document.getElementById('novaObraStatus').value,
+          user_id: currentUser.id
+        });
+        if (error) { showToast('Erro: ' + error.message, true); return; }
+        showToast('Obra criada!');
+        abrirObras(currentClientId);
+        closeModal();
+      });
+    });
+
+    // Adicionar Tipologia
+    document.getElementById('adicionarTipologiaBtn').addEventListener('click', mostrarFormAdicionarTipologia);
+
+    // Gerar Coats
+    document.getElementById('gerarCoatsBtn').addEventListener('click', () => gerarCoats(currentWorkId));
+
+    // Gerar Orçamento
+    document.getElementById('gerarBudgetBtn').addEventListener('click', () => gerarBudget(currentWorkId));
+
+    // Gerar Pedido
+    document.getElementById('gerarOrderBtn').addEventListener('click', () => gerarOrder(currentWorkId));
+
+    // Abas
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        const target = this.dataset.tab;
+        document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+        document.getElementById(`tab${target.charAt(0).toUpperCase()+target.slice(1)}`).classList.add('active');
+      });
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    // =========================================================
+    // INICIALIZAÇÃO
+    // =========================================================
+    checkSession();
+
+  })();
+</script>
+</body>
+</html>
