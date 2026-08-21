@@ -1,650 +1,793 @@
-// =========================================================
-// RV VIDROS E ACABAMENTOS — app.js
-// =========================================================
+// ============================================================
+// ALÔ SERRALHEIRO - SISTEMA INTERNO
+// Aplicação Vue 3 + Vuetify 3 + Supabase
+// ============================================================
 
-const { createClient } = supabase;
-const db = createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
+const { createApp } = Vue;
 
-let currentWorkId = null;
-let clientsCache = [];
+const app = createApp({
+  data() {
+    return {
+      // ---------- Auth ----------
+      supabase: null,
+      user: null,
+      login: { email: "", password: "" },
+      showPass: false,
+      resetMode: false,
+      loginError: "",
+      loading: false,
 
-// ---------------------------------------------------------
-// HELPERS
-// ---------------------------------------------------------
-const $ = (id) => document.getElementById(id);
-const fmtMoney = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      // ---------- Navegação ----------
+      currentView: "dashboard",
+      workTab: "typologies",
+      menuItems: [
+        { view: "dashboard", label: "Início", icon: "mdi-view-dashboard-outline" },
+        { view: "clients", label: "Clientes", icon: "mdi-account-group-outline" },
+        { view: "works", label: "Obras", icon: "mdi-office-building-marker-outline" },
+      ],
 
-function showToast(msg, isError = false) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.toggle('error', isError);
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2600);
-}
+      // ---------- Dados ----------
+      clients: [],
+      works: [],
+      workTypologies: [],
+      materials: [],
+      budgets: [],
+      orders: [],
+      typologyCatalog: [],
+      currentWork: null,
 
-function openModal(id) { $(id).classList.add('active'); }
-function closeModal(id) { $(id).classList.remove('active'); }
+      // ---------- Buscas / filtros ----------
+      clientSearch: "",
+      worksClientFilter: null,
 
-document.querySelectorAll('[data-close]').forEach(btn => {
-  btn.addEventListener('click', () => closeModal(btn.dataset.close));
+      // ---------- Diálogos ----------
+      clientDialog: false,
+      workDialog: false,
+      typologyDialog: false,
+      materialDialog: false,
+      budgetDialog: false,
+
+      clientForm: {},
+      workForm: {},
+      typologyForm: {},
+      materialForm: {},
+      budgetForm: {},
+
+      // ---------- UI ----------
+      snackbar: { show: false, message: "", color: "success" },
+
+      rules: {
+        required: (v) => !!v || "Campo obrigatório",
+      },
+
+      materialCategories: [
+        "Perfis (marcos, folhas e arremates)",
+        "Componentes e ferragens",
+        "Vidros",
+        "Vedantes e acessórios",
+        "Outros",
+      ],
+
+      workStatusOptions: ["em_aberto", "em_andamento", "concluida", "cancelada"],
+    };
+  },
+
+  computed: {
+    isAuthenticated() {
+      return !!this.user;
+    },
+    userEmail() {
+      return this.user ? this.user.email : "";
+    },
+    userInitials() {
+      if (!this.user || !this.user.email) return "?";
+      const parts = this.user.email.split("@")[0].split(/[._-]/);
+      return parts.slice(0, 2).map((p) => p[0].toUpperCase()).join("") || "?";
+    },
+
+    statsCards() {
+      const budgetsCount = this.budgets.length;
+      const ordersCount = this.orders.length;
+      const revenue = this.orders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+      return [
+        { label: "Clientes", value: this.clients.length, icon: "mdi-account-group", color: "primary" },
+        { label: "Obras", value: this.works.length, icon: "mdi-office-building", color: "secondary" },
+        { label: "Orçamentos", value: budgetsCount, icon: "mdi-file-document", color: "teal" },
+        { label: "Vendas (R$)", value: this.money(revenue), icon: "mdi-sale", color: "green" },
+      ];
+    },
+
+    recentWorks() {
+      return [...this.works].slice(0, 8).map((w) => ({
+        ...w,
+        client_name: w.client ? w.client.name : "-",
+      }));
+    },
+
+    filteredClients() {
+      const q = this.clientSearch.toLowerCase();
+      if (!q) return this.clients;
+      return this.clients.filter((c) =>
+        [c.name, c.phone, c.email].some((v) => v && String(v).toLowerCase().includes(q))
+      );
+    },
+
+    filteredWorks() {
+      if (!this.worksClientFilter) return this.works;
+      return this.works.filter((w) => w.client_id === this.worksClientFilter);
+    },
+
+    materialsTotal() {
+      return this.materials.reduce((s, m) => s + (Number(m.total_cost) || 0), 0);
+    },
+
+    budgetFormPreviewTotal() {
+      const prod = Number(this.budgetForm.production_cost) || 0;
+      const inst = Number(this.budgetForm.installation_cost) || 0;
+      const gain = (Number(this.budgetForm.gain_percentage) || 0) / 100;
+      return (prod + inst) * (1 + gain);
+    },
+
+    selectedCatalogTypology() {
+      return this.typologyCatalog.find((t) => t.id === this.typologyForm.typology_id);
+    },
+
+    clientHeaders() {
+      return [
+        { title: "Nome", key: "name" },
+        { title: "Telefone", key: "phone" },
+        { title: "E-mail", key: "email" },
+        { title: "Obras", key: "works_counter" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    workHeaders() {
+      return [
+        { title: "Código", key: "code" },
+        { title: "Obra", key: "name" },
+        { title: "Cliente", key: "client_name" },
+        { title: "Status", key: "status" },
+        { title: "Valor", key: "budget_price" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    typologyHeaders() {
+      return [
+        { title: "Tipologia", key: "typology_name" },
+        { title: "Dimensões (L x A)", key: "dimensions" },
+        { title: "Cor do Perfil", key: "profile_color" },
+        { title: "Vidro", key: "glass_type" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    materialHeaders() {
+      return [
+        { title: "Categoria", key: "category" },
+        { title: "Material", key: "name" },
+        { title: "Cor", key: "color" },
+        { title: "Quantidade", key: "quantity" },
+        { title: "Custo Unit.", key: "unit_cost" },
+        { title: "Total", key: "total_cost" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    budgetHeaders() {
+      return [
+        { title: "Código", key: "code" },
+        { title: "Produção", key: "production_cost" },
+        { title: "Instalação", key: "installation_cost" },
+        { title: "Ganho", key: "gain_percentage" },
+        { title: "Total", key: "total" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    orderHeaders() {
+      return [
+        { title: "Código", key: "code" },
+        { title: "Componentes", key: "components_own_cost" },
+        { title: "Vidros", key: "glasses_own_cost" },
+        { title: "Perfis", key: "profiles_own_cost" },
+        { title: "Total", key: "total" },
+        { title: "", key: "actions", sortable: false, align: "end" },
+      ];
+    },
+
+    recentHeaders() {
+      return [
+        { title: "Código", key: "code" },
+        { title: "Obra", key: "name" },
+        { title: "Cliente", key: "client_name" },
+        { title: "Valor", key: "budget_price" },
+      ];
+    },
+  },
+
+  methods: {
+    // ---------- Utilidades ----------
+    money(v) {
+      const n = Number(v) || 0;
+      return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    },
+
+    statusLabel(status) {
+      return {
+        em_aberto: "Em aberto",
+        em_andamento: "Em andamento",
+        concluida: "Concluída",
+        cancelada: "Cancelada",
+      }[status] || status || "-";
+    },
+
+    statusColor(status) {
+      return {
+        em_aberto: "info",
+        em_andamento: "warning",
+        concluida: "success",
+        cancelada: "error",
+      }[status] || "default";
+    },
+
+    notify(message, color = "success") {
+      this.snackbar = { show: true, message, color };
+    },
+
+    // ---------- Auth ----------
+    async initSupabase() {
+      if (!SUPABASE_CONFIG.url.startsWith("http")) {
+        this.loginError =
+          "Configure as credenciais do Supabase no arquivo config.js";
+        return;
+      }
+      if (!window.supabase) {
+        this.loginError =
+          "A biblioteca do Supabase não carregou (verifique sua conexão/bloqueador de scripts).";
+        return;
+      }
+      this.supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+
+      const { data } = await this.supabase.auth.getSession();
+      if (data.session) {
+        this.user = data.session.user;
+        await this.loadAll();
+      } else {
+        this.supabase.auth.onAuthStateChange((_event, session) => {
+          this.user = session ? session.user : null;
+          if (this.user) this.loadAll();
+        });
+      }
+    },
+
+    async doLogin() {
+      this.loading = true;
+      this.loginError = "";
+      try {
+        if (!this.supabase) {
+          throw new Error(
+            "Supabase não inicializado. Verifique o config.js e sua conexão."
+          );
+        }
+        const { error } = await this.supabase.auth.signInWithPassword({
+          email: this.login.email,
+          password: this.login.password,
+        });
+        if (error) throw error;
+      } catch (e) {
+        this.loginError = e.message || "Falha no login. Verifique e-mail e senha.";
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async doResetPassword() {
+      this.loading = true;
+      this.loginError = "";
+      try {
+        const { error } = await this.supabase.auth.resetPasswordForEmail(this.login.email, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        this.notify("Link de redefinição enviado para o seu e-mail.", "info");
+        this.resetMode = false;
+      } catch (e) {
+        this.loginError = e.message || "Não foi possível enviar o link.";
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async doLogout() {
+      await this.supabase.auth.signOut();
+      this.user = null;
+      this.currentView = "dashboard";
+    },
+
+    navigate(view) {
+      if (view === "works") this.loadWorks();
+      if (view === "clients") this.loadClients();
+      this.currentView = view;
+    },
+
+    // ---------- Carga de dados ----------
+    async loadAll() {
+      await Promise.all([this.loadClients(), this.loadWorks(), this.loadCatalog()]);
+    },
+
+    async loadClients() {
+      const { data, error } = await this.supabase
+        .from("clients")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) return this.notify(error.message, "error");
+      this.clients = data || [];
+    },
+
+    async loadWorks() {
+      const { data, error } = await this.supabase
+        .from("works")
+        .select("*, client:clients(*)")
+        .order("created_at", { ascending: false });
+      if (error) return this.notify(error.message, "error");
+      this.works = (data || []).map((w) => ({ ...w, client_name: w.client ? w.client.name : "-" }));
+    },
+
+    async loadCatalog() {
+      const { data: typologies, error } = await this.supabase
+        .from("typologies")
+        .select("*, lines:typology_lines(*)");
+      if (error) return;
+      if (typologies && typologies.length) {
+        this.typologyCatalog = typologies;
+      } else {
+        this.typologyCatalog = (window.TYPOLOGY_CATALOG || []).map((t, i) => ({
+          id: `local-${i}`,
+          ...t,
+          lines: (t.lines || []).map((n, j) => ({ id: `local-line-${i}-${j}`, name: n })),
+        }));
+      }
+    },
+
+    async loadWorkDetail(work) {
+      this.currentWork = work;
+      this.workTab = "typologies";
+      await Promise.all([
+        this.loadTypologies(),
+        this.loadMaterials(),
+        this.loadBudgets(),
+        this.loadOrders(),
+      ]);
+    },
+
+    async loadTypologies() {
+      const { data, error } = await this.supabase
+        .from("work_typologies")
+        .select("*, typology:typologies(*), line:typology_lines(*)")
+        .eq("work_id", this.currentWork.id);
+      if (error) return this.notify(error.message, "error");
+      this.workTypologies = (data || []).map((t) => ({
+        ...t,
+        typology_name: t.typology ? t.typology.name : (t.params && t.params.name) || "-",
+        line_name: t.line ? t.line.name : "-",
+      }));
+    },
+
+    async loadMaterials() {
+      const { data, error } = await this.supabase
+        .from("materials")
+        .select("*")
+        .eq("work_id", this.currentWork.id);
+      if (error) return this.notify(error.message, "error");
+      this.materials = data || [];
+    },
+
+    async loadBudgets() {
+      const { data, error } = await this.supabase
+        .from("budgets")
+        .select("*")
+        .eq("work_id", this.currentWork.id)
+        .order("created_at", { ascending: false });
+      if (error) return this.notify(error.message, "error");
+      this.budgets = data || [];
+    },
+
+    async loadOrders() {
+      const { data, error } = await this.supabase
+        .from("orders")
+        .select("*")
+        .eq("work_id", this.currentWork.id)
+        .order("created_at", { ascending: false });
+      if (error) return this.notify(error.message, "error");
+      this.orders = data || [];
+    },
+
+    // ---------- Clientes ----------
+    openClientDialog(item) {
+      this.clientForm = item ? { ...item } : { name: "", phone: "", email: "", address: "", notes: "" };
+      this.clientDialog = true;
+    },
+
+    async saveClient() {
+      this.loading = true;
+      try {
+        if (this.clientForm.id) {
+          const { id, works_counter, transactions_counter, created_at, updated_at, ...payload } = this.clientForm;
+          const { error } = await this.supabase.from("clients").update(payload).eq("id", id);
+          if (error) throw error;
+          this.notify("Cliente atualizado!");
+        } else {
+          const { error } = await this.supabase.from("clients").insert(this.clientForm);
+          if (error) throw error;
+          this.notify("Cliente criado!");
+        }
+        this.clientDialog = false;
+        await this.loadClients();
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async deleteClient(item) {
+      if (!confirm(`Excluir o cliente "${item.name}"?`)) return;
+      const { error } = await this.supabase.from("clients").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Cliente excluído.", "info");
+      this.loadClients();
+    },
+
+    selectClient(_event, { item }) {
+      this.worksClientFilter = item.id;
+      this.navigate("works");
+    },
+
+    // ---------- Obras ----------
+    openWorkDialog(item) {
+      this.workForm = item
+        ? { ...item, client_id: item.client_id || null }
+        : { client_id: null, name: "", code: "", status: "em_aberto", budget_price: 0, notes: "" };
+      this.workDialog = true;
+    },
+
+    async saveWork() {
+      this.loading = true;
+      try {
+        if (this.workForm.id) {
+          const { id, client, client_name, created_at, updated_at, ...payload } = this.workForm;
+          const { error } = await this.supabase.from("works").update(payload).eq("id", id);
+          if (error) throw error;
+          this.notify("Obra atualizada!");
+        } else {
+          if (!this.workForm.code) this.workForm.code = await this.nextWorkCode();
+          const { error } = await this.supabase.from("works").insert(this.workForm);
+          if (error) throw error;
+          this.notify("Obra criada!");
+        }
+        this.workDialog = false;
+        await this.loadWorks();
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async nextWorkCode() {
+      const today = new Date();
+      const y = String(today.getFullYear()).slice(2);
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      const d = String(today.getDate()).padStart(2, "0");
+      const { data, error } = await this.supabase
+        .from("works")
+        .select("code")
+        .like("code", `${y}${m}${d}-%`)
+        .order("code", { ascending: false })
+        .limit(1);
+      if (error) return `${y}${m}${d}-001`;
+      const last = data && data.length ? data[0].code : null;
+      const num = last ? parseInt(last.split("-")[1], 10) + 1 : 1;
+      return `${y}${m}${d}-${String(num).padStart(3, "0")}`;
+    },
+
+    async deleteWork(item) {
+      if (!confirm(`Excluir a obra "${item.name}"?`)) return;
+      const { error } = await this.supabase.from("works").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Obra excluída.", "info");
+      this.loadWorks();
+    },
+
+    async openWork(_event, { item }) {
+      await this.loadWorkDetail(item);
+      this.currentView = "workDetail";
+    },
+
+    backToWorks() {
+      this.currentView = "works";
+      this.currentWork = null;
+      this.workTypologies = [];
+      this.materials = [];
+      this.budgets = [];
+      this.orders = [];
+    },
+
+    // ---------- Tipologias ----------
+    openTypologyDialog(item) {
+      this.typologyForm = item
+        ? {
+            ...item,
+            typology_id: item.typology_id,
+            line_id: item.line_id || null,
+          }
+        : { work_id: this.currentWork.id, quantity: 1, width: null, height: null, profile_color: "", glass_type: "", notes: "" };
+      this.typologyDialog = true;
+    },
+
+    async saveTypology() {
+      this.loading = true;
+      try {
+        const payload = { ...this.typologyForm };
+        if (payload.id) {
+          const { id, typology, line, typology_name, line_name, created_at, ...rest } = payload;
+          const { error } = await this.supabase.from("work_typologies").update(rest).eq("id", id);
+          if (error) throw error;
+        } else {
+          const { error } = await this.supabase.from("work_typologies").insert(payload);
+          if (error) throw error;
+        }
+        this.typologyDialog = false;
+        await this.loadTypologies();
+        this.notify("Tipologia salva!");
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async removeTypology(item) {
+      if (!confirm("Remover esta tipologia da obra?")) return;
+      const { error } = await this.supabase.from("work_typologies").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Tipologia removida.", "info");
+      this.loadTypologies();
+    },
+
+    // ---------- Materiais ----------
+    openMaterialDialog(item) {
+      this.materialForm = item
+        ? { ...item }
+        : { work_id: this.currentWork.id, category: this.materialCategories[0], name: "", color: "", quantity: 1, unit: "un", unit_cost: 0, notes: "" };
+      this.materialDialog = true;
+    },
+
+    async saveMaterial() {
+      this.loading = true;
+      try {
+        const payload = { ...this.materialForm };
+        payload.unit_cost = Number(payload.unit_cost) || 0;
+        payload.quantity = Number(payload.quantity) || 0;
+        payload.total_cost = payload.unit_cost * payload.quantity;
+        if (payload.id) {
+          const { id, created_at, ...rest } = payload;
+          const { error } = await this.supabase.from("materials").update(rest).eq("id", id);
+          if (error) throw error;
+        } else {
+          const { error } = await this.supabase.from("materials").insert(payload);
+          if (error) throw error;
+        }
+        this.materialDialog = false;
+        await this.loadMaterials();
+        this.notify("Material salvo!");
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async deleteMaterial(item) {
+      if (!confirm("Excluir este material?")) return;
+      const { error } = await this.supabase.from("materials").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Material excluído.", "info");
+      this.loadMaterials();
+    },
+
+    // Cálculo simplificado da lista de compras a partir das tipologias.
+    // Aqui você pode substituir pela sua fórmula real (ou chamar um backend/GAS).
+    async calcMaterials() {
+      if (!this.workTypologies.length) {
+        return this.notify("Adicione tipologias antes de calcular.", "warning");
+      }
+      this.loading = true;
+      try {
+        await this.supabase.from("materials").delete().eq("work_id", this.currentWork.id);
+        const rows = [];
+        for (const t of this.workTypologies) {
+          const w = Number(t.width) || 1000;
+          const h = Number(t.height) || 1000;
+          const qty = Number(t.quantity) || 1;
+          const perimeter = 2 * (w + h) / 1000; // metros lineares
+          const area = (w * h) / 1000000; // m²
+
+          if ((t.params && t.params.name) || (t.typology && t.typology.name)) {
+            const name = (t.typology && t.typology.name) || (t.params && t.params.name) || "Perfil";
+            rows.push({
+              work_id: this.currentWork.id,
+              category: "Perfis (marcos, folhas e arremates)",
+              name: `Perfis - ${name}`,
+              color: t.profile_color || "Branco Brilhante RAL9003",
+              unit: "m",
+              quantity: Math.round(perimeter * qty * 100) / 100,
+              unit_cost: 0,
+              total_cost: 0,
+            });
+            rows.push({
+              work_id: this.currentWork.id,
+              category: "Vidros",
+              name: `Vidro - ${name}`,
+              color: t.glass_type || "Temperado 8mm",
+              unit: "m²",
+              quantity: Math.round(area * qty * 100) / 100,
+              unit_cost: 0,
+              total_cost: 0,
+            });
+            rows.push({
+              work_id: this.currentWork.id,
+              category: "Componentes e ferragens",
+              name: `Kit de ferragens - ${name}`,
+              color: "",
+              unit: "un",
+              quantity: qty,
+              unit_cost: 0,
+              total_cost: 0,
+            });
+          }
+        }
+        if (rows.length) {
+          const { error } = await this.supabase.from("materials").insert(rows);
+          if (error) throw error;
+        }
+        await this.loadMaterials();
+        this.notify("Lista de compras calculada! Preencha os custos unitários.");
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // ---------- Orçamentos ----------
+    openBudgetDialog() {
+      const total = this.materialsTotal;
+      this.budgetForm = {
+        work_id: this.currentWork.id,
+        production_cost: Math.round(total * 100) / 100,
+        installation_cost: 0,
+        gain_percentage: 0,
+      };
+      this.budgetDialog = true;
+    },
+
+    budgetTotal(b) {
+      const prod = Number(b.production_cost) || 0;
+      const inst = Number(b.installation_cost) || 0;
+      const gain = (Number(b.gain_percentage) || 0) / 100;
+      return (prod + inst) * (1 + gain);
+    },
+
+    async saveBudget() {
+      this.loading = true;
+      try {
+        const code = await this.nextWorkCode();
+        const summary = {
+          materials_count: this.materials.length,
+          materials_total: this.materialsTotal,
+        };
+        const payload = {
+          work_id: this.currentWork.id,
+          code,
+          production_cost: Number(this.budgetForm.production_cost) || 0,
+          installation_cost: Number(this.budgetForm.installation_cost) || 0,
+          gain_percentage: Number(this.budgetForm.gain_percentage) || 0,
+          summary,
+          components: this.materials,
+          status: "rascunho",
+        };
+        const { data, error } = await this.supabase.from("budgets").insert(payload).select().single();
+        if (error) throw error;
+
+        await this.supabase.from("works").update({ budget_price: this.budgetTotal(payload) }).eq("id", this.currentWork.id);
+        this.currentWork.budget_price = this.budgetTotal(payload);
+
+        this.budgetDialog = false;
+        await Promise.all([this.loadBudgets(), this.loadWorks()]);
+        this.notify(`Orçamento ${code} gerado!`);
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async deleteBudget(item) {
+      if (!confirm(`Excluir o orçamento "${item.code}"?`)) return;
+      const { error } = await this.supabase.from("budgets").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Orçamento excluído.", "info");
+      this.loadBudgets();
+    },
+
+    // ---------- Vendas ----------
+    async generateOrderFromBudget(budget) {
+      if (!confirm(`Gerar venda a partir do orçamento "${budget.code}"?`)) return;
+      this.loading = true;
+      try {
+        const components = Array.isArray(budget.components) ? budget.components : [];
+        const profiles = components.filter((c) => c.category && c.category.includes("Perfis"));
+        const glasses = components.filter((c) => c.category && c.category.includes("Vidro"));
+        const others = components.filter(
+          (c) => !(c.category && (c.category.includes("Perfis") || c.category.includes("Vidro")))
+        );
+        const sum = (arr) => arr.reduce((s, c) => s + (Number(c.total_cost) || 0), 0);
+
+        const payload = {
+          work_id: this.currentWork.id,
+          budget_id: budget.id,
+          code: await this.nextWorkCode(),
+          profiles_own_cost: sum(profiles),
+          glasses_own_cost: sum(glasses),
+          components_own_cost: sum(others),
+          total: this.budgetTotal(budget),
+          status: "gerado",
+          items: components,
+        };
+        const { error } = await this.supabase.from("orders").insert(payload);
+        if (error) throw error;
+        await this.loadOrders();
+        await this.supabase.from("budgets").update({ status: "aprovado" }).eq("id", budget.id);
+        await this.loadBudgets();
+        this.notify(`Venda ${payload.code} gerada!`);
+      } catch (e) {
+        this.notify(e.message, "error");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async deleteOrder(item) {
+      if (!confirm(`Excluir a venda "${item.code}"?`)) return;
+      const { error } = await this.supabase.from("orders").delete().eq("id", item.id);
+      if (error) return this.notify(error.message, "error");
+      this.notify("Venda excluída.", "info");
+      this.loadOrders();
+    },
+  },
+
+  async mounted() {
+    await this.initSupabase();
+  },
 });
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.classList.remove('active');
-  });
+
+const vuetify = Vuetify.createVuetify({
+  theme: {
+    defaultTheme: "light",
+    themes: {
+      light: {
+        colors: {
+          primary: "#1565c0",
+          secondary: "#7b1fa2",
+          background: "#f5f7fa",
+        },
+      },
+    },
+  },
 });
 
-function todayCode() {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}${mm}${yy}`;
-}
-
-// ---------------------------------------------------------
-// AUTENTICAÇÃO
-// ---------------------------------------------------------
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  $('loginError').textContent = '';
-  const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
-
-  const { data, error } = await db.auth.signInWithPassword({ email, password });
-  if (error) {
-    $('loginError').textContent = 'E-mail ou senha inválidos.';
-    return;
-  }
-  await enterApp(data.session.user);
-});
-
-$('logoutBtn').addEventListener('click', async () => {
-  await db.auth.signOut();
-  location.reload();
-});
-
-async function enterApp(user) {
-  $('loginScreen').style.display = 'none';
-  $('appShell').classList.add('active');
-  $('userChip').textContent = user.email;
-  await loadClients();
-  await loadWorks();
-  await loadAllBudgets();
-  await loadAllOrders();
-}
-
-// Restaura sessão ao recarregar a página
-(async function initSession() {
-  const { data } = await db.auth.getSession();
-  if (data.session) {
-    await enterApp(data.session.user);
-  }
-})();
-
-// ---------------------------------------------------------
-// NAVEGAÇÃO PRINCIPAL
-// ---------------------------------------------------------
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    goToPage(btn.dataset.page);
-  });
-});
-
-function goToPage(pageId) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  $(pageId).classList.add('active');
-}
-
-$('backToWorks').addEventListener('click', () => {
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.querySelector('[data-page="pageWorks"]').classList.add('active');
-  goToPage('pageWorks');
-});
-
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.subview').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    $(btn.dataset.sub).classList.add('active');
-  });
-});
-
-// ---------------------------------------------------------
-// CLIENTES
-// ---------------------------------------------------------
-$('btnNewClient').addEventListener('click', () => openModal('modalClient'));
-
-$('saveClientBtn').addEventListener('click', async () => {
-  const name = $('clientName').value.trim();
-  if (!name) { showToast('Informe o nome do cliente.', true); return; }
-
-  const { error } = await db.from('clients').insert({
-    name,
-    phone: $('clientPhone').value.trim() || null,
-    email: $('clientEmail').value.trim() || null,
-    address: $('clientAddress').value.trim() || null,
-  });
-
-  if (error) { showToast('Erro ao salvar cliente: ' + error.message, true); return; }
-
-  ['clientName','clientPhone','clientEmail','clientAddress'].forEach(id => $(id).value = '');
-  closeModal('modalClient');
-  showToast('Cliente cadastrado.');
-  await loadClients();
-});
-
-async function loadClients() {
-  const { data, error } = await db
-    .from('clients')
-    .select('*, works(id)')
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar clientes: ' + error.message, true); return; }
-
-  clientsCache = data || [];
-  renderClients(clientsCache);
-  populateWorkClientSelect(clientsCache);
-}
-
-function renderClients(clients) {
-  const tbody = $('clientsTableBody');
-  tbody.innerHTML = '';
-  $('clientsEmpty').style.display = clients.length ? 'none' : 'block';
-
-  clients.forEach(c => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${escapeHtml(c.name)}</td>
-      <td class="muted">${escapeHtml(c.phone || '—')}</td>
-      <td class="muted">${escapeHtml(c.email || '—')}</td>
-      <td>${(c.works || []).length}</td>
-      <td><button class="icon-btn" data-id="${c.id}" title="Excluir">✕</button></td>
-    `;
-    tr.querySelector('.icon-btn').addEventListener('click', () => deleteClient(c.id));
-    tbody.appendChild(tr);
-  });
-}
-
-async function deleteClient(id) {
-  if (!confirm('Excluir este cliente? As obras vinculadas continuarão existindo sem cliente associado.')) return;
-  const { error } = await db.from('clients').delete().eq('id', id);
-  if (error) { showToast('Erro ao excluir: ' + error.message, true); return; }
-  showToast('Cliente excluído.');
-  await loadClients();
-}
-
-function populateWorkClientSelect(clients) {
-  const sel = $('workClientSelect');
-  sel.innerHTML = '<option value="">Sem cliente vinculado</option>' +
-    clients.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-}
-
-// ---------------------------------------------------------
-// OBRAS
-// ---------------------------------------------------------
-$('btnNewWork').addEventListener('click', () => openModal('modalWork'));
-
-$('saveWorkBtn').addEventListener('click', async () => {
-  const name = $('workName').value.trim();
-  if (!name) { showToast('Informe o nome da obra.', true); return; }
-
-  const clientId = $('workClientSelect').value || null;
-  const code = `${todayCode()}-${String(Math.floor(Math.random() * 900) + 100)}`;
-
-  const { error } = await db.from('works').insert({
-    name, client_id: clientId, code, status: 'orcamento', budget_price: 0,
-  });
-
-  if (error) { showToast('Erro ao criar obra: ' + error.message, true); return; }
-
-  $('workName').value = '';
-  closeModal('modalWork');
-  showToast('Obra criada.');
-  await loadWorks();
-});
-
-async function loadWorks() {
-  const { data, error } = await db
-    .from('works')
-    .select('*, clients(name)')
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar obras: ' + error.message, true); return; }
-
-  renderWorks(data || []);
-}
-
-function renderWorks(works) {
-  const tbody = $('worksTableBody');
-  tbody.innerHTML = '';
-  $('worksEmpty').style.display = works.length ? 'none' : 'block';
-
-  works.forEach(w => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="mono">${escapeHtml(w.code || '—')}</td>
-      <td class="clickable">${escapeHtml(w.name)}</td>
-      <td class="muted">${escapeHtml(w.clients?.name || '—')}</td>
-      <td><span class="tag tag-status status-${w.status}">${statusLabel(w.status)}</span></td>
-      <td class="num">${fmtMoney(w.budget_price)}</td>
-      <td><button class="icon-btn" data-id="${w.id}" title="Excluir">✕</button></td>
-    `;
-    tr.querySelector('td.clickable').addEventListener('click', () => openWorkDetail(w.id));
-    tr.querySelector('.icon-btn').addEventListener('click', (e) => { e.stopPropagation(); deleteWork(w.id); });
-    tbody.appendChild(tr);
-  });
-}
-
-function statusLabel(s) {
-  return {
-    orcamento: 'Orçamento', aprovado: 'Aprovado', producao: 'Produção',
-    instalado: 'Instalado', cancelado: 'Cancelado',
-    rascunho: 'Rascunho', enviado: 'Enviado', recusado: 'Recusado',
-    aberto: 'Aberto', entregue: 'Entregue',
-  }[s] || s;
-}
-
-async function deleteWork(id) {
-  if (!confirm('Excluir esta obra e todos os dados vinculados (tipologias, materiais, orçamentos, pedidos)?')) return;
-  const { error } = await db.from('works').delete().eq('id', id);
-  if (error) { showToast('Erro ao excluir: ' + error.message, true); return; }
-  showToast('Obra excluída.');
-  await loadWorks();
-  await loadAllBudgets();
-  await loadAllOrders();
-}
-
-// ---------------------------------------------------------
-// DETALHE DA OBRA
-// ---------------------------------------------------------
-async function openWorkDetail(workId) {
-  currentWorkId = workId;
-
-  const { data: work, error } = await db
-    .from('works')
-    .select('*, clients(name)')
-    .eq('id', workId)
-    .single();
-
-  if (error) { showToast('Erro ao abrir obra: ' + error.message, true); return; }
-
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  goToPage('pageWorkDetail');
-
-  $('workDetailTitle').textContent = work.name;
-  $('workDetailSub').textContent = `${work.code || ''} · ${work.clients?.name || 'Sem cliente'}`;
-  $('workStatusSelect').value = work.status;
-
-  await loadTypologies(workId);
-  await loadMaterials(workId);
-  await loadBudgetsForWork(workId);
-  await loadOrdersForWork(workId);
-  await refreshWorkStats(workId, work.budget_price);
-}
-
-$('workStatusSelect').addEventListener('change', async () => {
-  if (!currentWorkId) return;
-  const { error } = await db.from('works').update({ status: $('workStatusSelect').value }).eq('id', currentWorkId);
-  if (error) { showToast('Erro ao atualizar status: ' + error.message, true); return; }
-  showToast('Status atualizado.');
-  await loadWorks();
-});
-
-async function refreshWorkStats(workId, budgetPrice) {
-  const { data: typos } = await db.from('work_typologies').select('total_price').eq('work_id', workId);
-  const { data: mats } = await db.from('materials').select('total_cost').eq('work_id', workId);
-
-  const typoTotal = (typos || []).reduce((s, t) => s + Number(t.total_price || 0), 0);
-  const matTotal = (mats || []).reduce((s, m) => s + Number(m.total_cost || 0), 0);
-
-  $('statTypologiesTotal').textContent = fmtMoney(typoTotal);
-  $('statMaterialsTotal').textContent = fmtMoney(matTotal);
-  $('statWorkPrice').textContent = fmtMoney(budgetPrice);
-}
-
-// ---------- Tipologias ----------
-$('btnNewTypology').addEventListener('click', () => openModal('modalTypology'));
-
-$('typoLine').addEventListener('change', () => {
-  const isSuprema = $('typoLine').value === 'Suprema';
-  $('fieldProfileColor').style.display = isSuprema ? 'block' : 'none';
-  $('fieldGlassType').style.display = isSuprema ? 'none' : 'block';
-});
-
-$('saveTypologyBtn').addEventListener('click', async () => {
-  if (!currentWorkId) return;
-  const name = $('typoName').value.trim();
-  const width = parseFloat($('typoWidth').value);
-  const height = parseFloat($('typoHeight').value);
-
-  if (!name || !width || !height) { showToast('Preencha nome, largura e altura.', true); return; }
-
-  const { error } = await db.from('work_typologies').insert({
-    work_id: currentWorkId,
-    line: $('typoLine').value,
-    typology_name: name,
-    width_mm: width,
-    height_mm: height,
-    profile_color: $('typoProfileColor').value.trim() || null,
-    glass_type: $('typoGlassType').value.trim() || null,
-    quantity: parseInt($('typoQty').value) || 1,
-    unit_price: parseFloat($('typoUnitPrice').value) || 0,
-  });
-
-  if (error) { showToast('Erro ao adicionar tipologia: ' + error.message, true); return; }
-
-  ['typoName','typoWidth','typoHeight','typoProfileColor','typoGlassType','typoUnitPrice'].forEach(id => $(id).value = '');
-  $('typoQty').value = 1;
-  closeModal('modalTypology');
-  showToast('Tipologia adicionada.');
-  await loadTypologies(currentWorkId);
-  await refreshStatsAfterEdit();
-});
-
-async function loadTypologies(workId) {
-  const { data, error } = await db
-    .from('work_typologies')
-    .select('*')
-    .eq('work_id', workId)
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar tipologias: ' + error.message, true); return; }
-
-  const tbody = $('typologiesTableBody');
-  tbody.innerHTML = '';
-  $('typologiesEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(t => {
-    const tagClass = t.line === 'Suprema' ? 'tag-suprema' : 'tag-temperado';
-    const detail = t.line === 'Suprema' ? (t.profile_color || '—') : (t.glass_type || '—');
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><span class="tag ${tagClass}">${t.line}</span></td>
-      <td>${escapeHtml(t.typology_name)}</td>
-      <td class="mono muted">${t.width_mm} × ${t.height_mm} mm</td>
-      <td class="muted">${escapeHtml(detail)}</td>
-      <td class="num">${t.quantity}</td>
-      <td class="num">${fmtMoney(t.unit_price)}</td>
-      <td class="num">${fmtMoney(t.total_price)}</td>
-      <td><button class="icon-btn" data-id="${t.id}">✕</button></td>
-    `;
-    tr.querySelector('.icon-btn').addEventListener('click', () => deleteTypology(t.id));
-    tbody.appendChild(tr);
-  });
-}
-
-async function deleteTypology(id) {
-  const { error } = await db.from('work_typologies').delete().eq('id', id);
-  if (error) { showToast('Erro ao excluir: ' + error.message, true); return; }
-  await loadTypologies(currentWorkId);
-  await refreshStatsAfterEdit();
-}
-
-// ---------- Materiais ----------
-$('btnNewMaterial').addEventListener('click', () => openModal('modalMaterial'));
-
-$('saveMaterialBtn').addEventListener('click', async () => {
-  if (!currentWorkId) return;
-  const description = $('matDescription').value.trim();
-  if (!description) { showToast('Informe a descrição do material.', true); return; }
-
-  const { error } = await db.from('materials').insert({
-    work_id: currentWorkId,
-    category: $('matCategory').value,
-    description,
-    color: $('matColor').value.trim() || null,
-    unit: $('matUnit').value.trim() || 'un',
-    quantity: parseFloat($('matQty').value) || 0,
-    unit_cost: parseFloat($('matUnitCost').value) || 0,
-  });
-
-  if (error) { showToast('Erro ao adicionar material: ' + error.message, true); return; }
-
-  ['matDescription','matColor','matQty','matUnitCost'].forEach(id => $(id).value = '');
-  $('matUnit').value = 'un';
-  closeModal('modalMaterial');
-  showToast('Material adicionado.');
-  await loadMaterials(currentWorkId);
-  await refreshStatsAfterEdit();
-});
-
-async function loadMaterials(workId) {
-  const { data, error } = await db
-    .from('materials')
-    .select('*')
-    .eq('work_id', workId)
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar materiais: ' + error.message, true); return; }
-
-  const tbody = $('materialsTableBody');
-  tbody.innerHTML = '';
-  $('materialsEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(m => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="muted">${m.category}</td>
-      <td>${escapeHtml(m.description)}</td>
-      <td class="muted">${escapeHtml(m.color || '—')}</td>
-      <td class="num">${m.quantity}</td>
-      <td class="muted">${m.unit}</td>
-      <td class="num">${fmtMoney(m.unit_cost)}</td>
-      <td class="num">${fmtMoney(m.total_cost)}</td>
-      <td><button class="icon-btn" data-id="${m.id}">✕</button></td>
-    `;
-    tr.querySelector('.icon-btn').addEventListener('click', () => deleteMaterial(m.id));
-    tbody.appendChild(tr);
-  });
-}
-
-async function deleteMaterial(id) {
-  const { error } = await db.from('materials').delete().eq('id', id);
-  if (error) { showToast('Erro ao excluir: ' + error.message, true); return; }
-  await loadMaterials(currentWorkId);
-  await refreshStatsAfterEdit();
-}
-
-async function refreshStatsAfterEdit() {
-  const { data: work } = await db.from('works').select('budget_price').eq('id', currentWorkId).single();
-  await refreshWorkStats(currentWorkId, work?.budget_price || 0);
-}
-
-// ---------- Orçamento ----------
-$('btnGenerateBudget').addEventListener('click', async () => {
-  if (!currentWorkId) return;
-
-  const production = parseFloat($('budgetProductionCost').value) || 0;
-  const installation = parseFloat($('budgetInstallationCost').value) || 0;
-  const gainPct = parseFloat($('budgetGainPct').value) || 0;
-  const base = production + installation;
-  const total = base * (1 + gainPct / 100);
-
-  const { data: budget, error } = await db.from('budgets').insert({
-    work_id: currentWorkId,
-    production_cost: production,
-    installation_cost: installation,
-    gain_percentage: gainPct,
-    total,
-    summary: $('budgetSummary').value.trim() || null,
-    status: 'rascunho',
-  }).select().single();
-
-  if (error) { showToast('Erro ao gerar orçamento: ' + error.message, true); return; }
-
-  // Atualiza o valor da obra com o orçamento mais recente
-  await db.from('works').update({ budget_price: total }).eq('id', currentWorkId);
-
-  showToast('Orçamento gerado.');
-  await loadBudgetsForWork(currentWorkId);
-  await refreshStatsAfterEdit();
-  await loadWorks();
-  await loadAllBudgets();
-});
-
-async function loadBudgetsForWork(workId) {
-  const { data, error } = await db
-    .from('budgets')
-    .select('*')
-    .eq('work_id', workId)
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar orçamentos: ' + error.message, true); return; }
-
-  const tbody = $('budgetsTableBody');
-  tbody.innerHTML = '';
-  $('budgetsEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(b => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="muted">${new Date(b.created_at).toLocaleDateString('pt-BR')}</td>
-      <td class="num">${fmtMoney(b.production_cost)}</td>
-      <td class="num">${fmtMoney(b.installation_cost)}</td>
-      <td class="num">${b.gain_percentage}%</td>
-      <td class="num">${fmtMoney(b.total)}</td>
-      <td><span class="tag tag-status status-${b.status}">${statusLabel(b.status)}</span></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// ---------- Pedido ----------
-$('btnGenerateOrder').addEventListener('click', async () => {
-  if (!currentWorkId) return;
-
-  const { data: lastBudget, error: budgetErr } = await db
-    .from('budgets')
-    .select('*')
-    .eq('work_id', currentWorkId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (budgetErr) { showToast('Erro ao buscar orçamento: ' + budgetErr.message, true); return; }
-  if (!lastBudget) { showToast('Gere um orçamento antes de criar o pedido.', true); return; }
-
-  const { data: mats } = await db.from('materials').select('category, total_cost').eq('work_id', currentWorkId);
-  const sumCat = (cat) => (mats || []).filter(m => m.category === cat).reduce((s, m) => s + Number(m.total_cost || 0), 0);
-
-  const profilesCost = sumCat('Perfis');
-  const glassesCost = sumCat('Vidros');
-  const componentsCost = sumCat('Componentes');
-
-  const { count } = await db.from('orders').select('id', { count: 'exact', head: true }).eq('work_id', currentWorkId);
-  const seq = String((count || 0) + 1).padStart(2, '0');
-
-  const { data: work } = await db.from('works').select('code').eq('id', currentWorkId).single();
-  const orderCode = `${work?.code || todayCode()}/${seq}`;
-
-  const { error } = await db.from('orders').insert({
-    work_id: currentWorkId,
-    budget_id: lastBudget.id,
-    code: orderCode,
-    profiles_own_cost: profilesCost,
-    glasses_own_cost: glassesCost,
-    components_own_cost: componentsCost,
-    total: lastBudget.total,
-    status: 'aberto',
-  });
-
-  if (error) { showToast('Erro ao gerar pedido: ' + error.message, true); return; }
-
-  showToast('Pedido gerado: ' + orderCode);
-  await loadOrdersForWork(currentWorkId);
-  await loadAllOrders();
-});
-
-async function loadOrdersForWork(workId) {
-  const { data, error } = await db
-    .from('orders')
-    .select('*')
-    .eq('work_id', workId)
-    .order('created_at', { ascending: false });
-
-  if (error) { showToast('Erro ao carregar pedidos: ' + error.message, true); return; }
-
-  const tbody = $('ordersTableBodyDetail');
-  tbody.innerHTML = '';
-  $('ordersDetailEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(o => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="mono">${o.code}</td>
-      <td class="num">${fmtMoney(o.profiles_own_cost)}</td>
-      <td class="num">${fmtMoney(o.glasses_own_cost)}</td>
-      <td class="num">${fmtMoney(o.components_own_cost)}</td>
-      <td class="num">${fmtMoney(o.total)}</td>
-      <td><span class="tag tag-status status-${o.status}">${statusLabel(o.status)}</span></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// ---------------------------------------------------------
-// VISÕES GERAIS — Orçamentos e Pedidos (todas as obras)
-// ---------------------------------------------------------
-async function loadAllBudgets() {
-  const { data, error } = await db
-    .from('budgets')
-    .select('*, works(name, code)')
-    .order('created_at', { ascending: false });
-
-  if (error) return;
-
-  const tbody = $('allBudgetsTableBody');
-  tbody.innerHTML = '';
-  $('allBudgetsEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(b => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${escapeHtml(b.works?.name || '—')} <span class="muted mono">${b.works?.code || ''}</span></td>
-      <td class="muted">${new Date(b.created_at).toLocaleDateString('pt-BR')}</td>
-      <td class="num">${fmtMoney(b.total)}</td>
-      <td><span class="tag tag-status status-${b.status}">${statusLabel(b.status)}</span></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-async function loadAllOrders() {
-  const { data, error } = await db
-    .from('orders')
-    .select('*, works(name, code)')
-    .order('created_at', { ascending: false });
-
-  if (error) return;
-
-  const tbody = $('allOrdersTableBody');
-  tbody.innerHTML = '';
-  $('allOrdersEmpty').style.display = (data || []).length ? 'none' : 'block';
-
-  (data || []).forEach(o => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="mono">${o.code}</td>
-      <td>${escapeHtml(o.works?.name || '—')}</td>
-      <td class="num">${fmtMoney(o.total)}</td>
-      <td><span class="tag tag-status status-${o.status}">${statusLabel(o.status)}</span></td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// ---------------------------------------------------------
-// UTIL
-// ---------------------------------------------------------
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+app.use(vuetify);
+app.mount("#app");

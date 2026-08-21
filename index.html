@@ -1,368 +1,599 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RV Vidros e Acabamentos — Sistema Interno</title>
-<link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alô Serralheiro - Sistema Interno</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vuetify@3.6.8/dist/vuetify.min.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="app">
+    <v-app>
+      <!-- ============ TELA DE LOGIN ============ -->
+      <v-main v-if="!isAuthenticated" class="login-wrap">
+        <v-container fluid class="fill-height">
+          <v-row align="center" justify="center" class="fill-height">
+            <v-col cols="12" sm="8" md="5" lg="4">
+              <v-card class="pa-6 rounded-xl elevation-6" color="rgba(255,255,255,0.97)">
+                <v-card-title class="text-center pb-0">
+                  <v-avatar color="primary" size="56" class="mb-2">
+                    <v-icon color="white" size="36">mdi-glass-flute</v-icon>
+                  </v-avatar>
+                  <div class="text-h5 font-weight-bold text-primary">Alô Serralheiro</div>
+                  <div class="text-body-2 text-medium-emphasis">Sistema Interno de Orçamentos</div>
+                </v-card-title>
 
-<!-- ============ LOGIN ============ -->
-<div id="loginScreen" class="login-screen">
-  <div class="login-card">
-    <p class="login-brand">RV <span>Vidros</span> &amp; Acabamentos</p>
-    <p class="login-sub">Sistema interno — Suprema &amp; Temperado</p>
+                <v-card-text>
+                  <v-form ref="loginForm" @submit.prevent="doLogin" v-if="!resetMode">
+                    <v-alert v-if="loginError" type="error" variant="tonal" class="mb-4" density="compact">
+                      {{ loginError }}
+                    </v-alert>
+                    <v-text-field
+                      v-model="login.email"
+                      label="E-mail"
+                      prepend-inner-icon="mdi-email-outline"
+                      type="email"
+                      :rules="[rules.required]"
+                      variant="outlined"
+                      class="mb-3"
+                      autocomplete="email"
+                    ></v-text-field>
+                    <v-text-field
+                      v-model="login.password"
+                      label="Senha"
+                      prepend-inner-icon="mdi-lock-outline"
+                      :append-inner-icon="showPass ? 'mdi-eye-off' : 'mdi-eye'"
+                      :type="showPass ? 'text' : 'password'"
+                      @click:append-inner="showPass = !showPass"
+                      :rules="[rules.required]"
+                      variant="outlined"
+                      class="mb-3"
+                      autocomplete="current-password"
+                    ></v-text-field>
+                    <v-btn type="submit" color="primary" block size="large" :loading="loading">
+                      Entrar
+                    </v-btn>
+                    <v-btn variant="text" size="small" block class="mt-2" @click="resetMode = true">
+                      Esqueci minha senha
+                    </v-btn>
+                  </v-form>
 
-    <form id="loginForm">
-      <div class="field">
-        <label>E-mail</label>
-        <input type="email" id="loginEmail" required autocomplete="username">
-      </div>
-      <div class="field">
-        <label>Senha</label>
-        <input type="password" id="loginPassword" required autocomplete="current-password">
-      </div>
-      <button type="submit" class="btn btn-primary">Entrar</button>
-      <p class="login-error" id="loginError"></p>
-    </form>
-  </div>
-</div>
+                  <v-form @submit.prevent="doResetPassword" v-else>
+                    <v-alert type="info" variant="tonal" class="mb-4" density="compact">
+                      Informe seu e-mail para receber o link de redefinição.
+                    </v-alert>
+                    <v-text-field
+                      v-model="login.email"
+                      label="E-mail"
+                      prepend-inner-icon="mdi-email-outline"
+                      type="email"
+                      :rules="[rules.required]"
+                      variant="outlined"
+                      class="mb-3"
+                    ></v-text-field>
+                    <v-btn type="submit" color="primary" block size="large" :loading="loading">
+                      Enviar link
+                    </v-btn>
+                    <v-btn variant="text" size="small" block class="mt-2" @click="resetMode = false">
+                      Voltar ao login
+                    </v-btn>
+                  </v-form>
+                </v-card-text>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-container>
+      </v-main>
 
-<!-- ============ APP SHELL ============ -->
-<div id="appShell" class="app-shell">
+      <!-- ============ APP PRINCIPAL ============ -->
+      <v-layout v-else>
+        <v-navigation-drawer permanent color="primary" dark width="240">
+          <v-list>
+            <v-list-item class="px-3 pt-3 pb-2">
+              <template v-slot:prepend>
+                <v-avatar color="white">
+                  <v-icon color="primary">mdi-glass-flute</v-icon>
+                </v-avatar>
+              </template>
+              <v-list-item-title class="text-subtitle-1 font-weight-bold">Alô Serralheiro</v-list-item-title>
+              <v-list-item-subtitle class="text-caption">Sistema Interno</v-list-item-subtitle>
+            </v-list-item>
 
-  <aside class="sidebar">
-    <div class="sidebar-brand">
-      RV <span>Vidros</span>
-      <small>Suprema &amp; Temperado</small>
-    </div>
+            <v-divider class="mx-3 my-2"></v-divider>
 
-    <nav>
-      <button class="nav-item active" data-page="pageClients"><span class="nav-dot"></span> Clientes</button>
-      <button class="nav-item" data-page="pageWorks"><span class="nav-dot"></span> Obras</button>
-      <button class="nav-item" data-page="pageBudgets"><span class="nav-dot"></span> Orçamentos</button>
-      <button class="nav-item" data-page="pageOrders"><span class="nav-dot"></span> Pedidos</button>
-    </nav>
+            <v-list-item
+              v-for="item in menuItems"
+              :key="item.view"
+              :active="currentView === item.view"
+              @click="navigate(item.view)"
+              rounded="lg"
+              class="mx-2 my-1"
+            >
+              <template v-slot:prepend>
+                <v-icon>{{ item.icon }}</v-icon>
+              </template>
+              <v-list-item-title>{{ item.label }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
 
-    <div class="sidebar-footer">
-      <div class="user-chip" id="userChip"></div>
-      <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%">Sair</button>
-    </div>
-  </aside>
-
-  <main class="main">
-
-    <!-- ---------- CLIENTES ---------- -->
-    <section class="page active" id="pageClients">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Clientes</h1>
-          <p class="page-sub">Cadastro de clientes da RV Vidros &amp; Acabamentos</p>
-        </div>
-        <button class="btn btn-primary" id="btnNewClient">+ Novo cliente</button>
-      </div>
-
-      <div class="panel">
-        <table>
-          <thead>
-            <tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Obras</th><th></th></tr>
-          </thead>
-          <tbody id="clientsTableBody"></tbody>
-        </table>
-        <div class="empty-state" id="clientsEmpty" style="display:none;">Nenhum cliente cadastrado ainda.</div>
-      </div>
-    </section>
-
-    <!-- ---------- OBRAS (lista) ---------- -->
-    <section class="page" id="pageWorks">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Obras</h1>
-          <p class="page-sub">Projetos em orçamento, produção e instalação</p>
-        </div>
-        <button class="btn btn-primary" id="btnNewWork">+ Nova obra</button>
-      </div>
-
-      <div class="panel">
-        <table>
-          <thead>
-            <tr><th>Código</th><th>Obra</th><th>Cliente</th><th>Status</th><th class="num">Valor</th><th></th></tr>
-          </thead>
-          <tbody id="worksTableBody"></tbody>
-        </table>
-        <div class="empty-state" id="worksEmpty" style="display:none;">Nenhuma obra cadastrada ainda.</div>
-      </div>
-    </section>
-
-    <!-- ---------- OBRA (detalhe) ---------- -->
-    <section class="page" id="pageWorkDetail">
-      <div class="breadcrumb"><span id="backToWorks">← Obras</span></div>
-      <div class="page-header">
-        <div>
-          <h1 class="page-title" id="workDetailTitle">Obra</h1>
-          <p class="page-sub" id="workDetailSub"></p>
-        </div>
-        <select class="field" id="workStatusSelect" style="width:170px; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:9px; color:var(--text);">
-          <option value="orcamento">Orçamento</option>
-          <option value="aprovado">Aprovado</option>
-          <option value="producao">Produção</option>
-          <option value="instalado">Instalado</option>
-          <option value="cancelado">Cancelado</option>
-        </select>
-      </div>
-
-      <div class="stat-row">
-        <div class="stat-box">
-          <div class="stat-label">Tipologias</div>
-          <div class="stat-value" id="statTypologiesTotal">R$ 0,00</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Materiais</div>
-          <div class="stat-value" id="statMaterialsTotal">R$ 0,00</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Valor da obra</div>
-          <div class="stat-value accent" id="statWorkPrice">R$ 0,00</div>
-        </div>
-      </div>
-
-      <div class="tabs">
-        <button class="tab-btn active" data-sub="subTypologies">Tipologias</button>
-        <button class="tab-btn" data-sub="subMaterials">Lista de materiais</button>
-        <button class="tab-btn" data-sub="subBudget">Orçamento</button>
-        <button class="tab-btn" data-sub="subOrder">Pedido</button>
-      </div>
-
-      <!-- TIPOLOGIAS -->
-      <div class="subview active" id="subTypologies">
-        <div class="panel">
-          <p class="panel-title">Tipologias da obra <button class="btn btn-secondary btn-sm" id="btnNewTypology">+ Adicionar</button></p>
-          <table>
-            <thead>
-              <tr><th>Linha</th><th>Tipologia</th><th>Dimensões</th><th>Cor / Vidro</th><th class="num">Qtd</th><th class="num">Vlr. unit.</th><th class="num">Total</th><th></th></tr>
-            </thead>
-            <tbody id="typologiesTableBody"></tbody>
-          </table>
-          <div class="empty-state" id="typologiesEmpty" style="display:none;">Nenhuma tipologia adicionada.</div>
-        </div>
-      </div>
-
-      <!-- MATERIAIS -->
-      <div class="subview" id="subMaterials">
-        <div class="panel">
-          <p class="panel-title">Lista de compras <button class="btn btn-secondary btn-sm" id="btnNewMaterial">+ Adicionar</button></p>
-          <table>
-            <thead>
-              <tr><th>Categoria</th><th>Descrição</th><th>Cor</th><th class="num">Qtd</th><th>Un.</th><th class="num">Custo unit.</th><th class="num">Total</th><th></th></tr>
-            </thead>
-            <tbody id="materialsTableBody"></tbody>
-          </table>
-          <div class="empty-state" id="materialsEmpty" style="display:none;">Nenhum material adicionado.</div>
-        </div>
-      </div>
-
-      <!-- ORÇAMENTO -->
-      <div class="subview" id="subBudget">
-        <div class="panel">
-          <p class="panel-title">Gerar orçamento</p>
-          <div class="grid-3">
-            <div class="field">
-              <label>Custo de produção (R$)</label>
-              <input type="number" step="0.01" id="budgetProductionCost">
+          <template v-slot:append>
+            <div class="pa-3">
+              <v-divider class="mb-3"></v-divider>
+              <v-list-item rounded="lg" class="px-2">
+                <template v-slot:prepend>
+                  <v-avatar color="white" size="32">
+                    <span class="text-primary font-weight-bold">{{ userInitials }}</span>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="text-caption">{{ userEmail }}</v-list-item-title>
+                <template v-slot:append>
+                  <v-btn icon="mdi-logout" variant="text" size="small" @click="doLogout" title="Sair"></v-btn>
+                </template>
+              </v-list-item>
             </div>
-            <div class="field">
-              <label>Custo de instalação (R$)</label>
-              <input type="number" step="0.01" id="budgetInstallationCost">
-            </div>
-            <div class="field">
-              <label>Margem de lucro (%)</label>
-              <input type="number" step="0.01" id="budgetGainPct">
-            </div>
-          </div>
-          <div class="field">
-            <label>Observações</label>
-            <textarea id="budgetSummary" placeholder="Resumo do orçamento para o cliente..."></textarea>
-          </div>
-          <button class="btn btn-primary" id="btnGenerateBudget">Gerar orçamento</button>
-        </div>
+          </template>
+        </v-navigation-drawer>
 
-        <div class="panel">
-          <p class="panel-title">Histórico de orçamentos</p>
-          <table>
-            <thead>
-              <tr><th>Data</th><th class="num">Produção</th><th class="num">Instalação</th><th class="num">Margem</th><th class="num">Total</th><th>Status</th></tr>
-            </thead>
-            <tbody id="budgetsTableBody"></tbody>
-          </table>
-          <div class="empty-state" id="budgetsEmpty" style="display:none;">Nenhum orçamento gerado ainda.</div>
-        </div>
-      </div>
+        <v-main class="app-main">
+          <v-container fluid>
+            <!-- ============ DASHBOARD ============ -->
+            <template v-if="currentView === 'dashboard'">
+              <v-row>
+                <v-col cols="12" md="3" v-for="card in statsCards" :key="card.label">
+                  <v-card class="rounded-xl" elevation="1">
+                    <v-card-text class="d-flex align-center">
+                      <v-avatar :color="card.color" rounded="lg" size="48" class="mr-3">
+                        <v-icon color="white">{{ card.icon }}</v-icon>
+                      </v-avatar>
+                      <div>
+                        <div class="text-h5 font-weight-bold">{{ card.value }}</div>
+                        <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
+                      </div>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+              </v-row>
 
-      <!-- PEDIDO -->
-      <div class="subview" id="subOrder">
-        <div class="panel">
-          <p class="panel-title">Gerar pedido de venda</p>
-          <p class="muted" style="font-size:13.5px; margin-bottom:16px;">
-            O pedido é gerado a partir do orçamento mais recente da obra, separando os custos por categoria.
-          </p>
-          <button class="btn btn-primary" id="btnGenerateOrder">Gerar pedido a partir do último orçamento</button>
-        </div>
+              <v-row class="mt-2">
+                <v-col cols="12" md="7">
+                  <v-card class="rounded-xl" elevation="1">
+                    <v-card-title class="d-flex align-center">
+                      <span class="text-subtitle-1 font-weight-bold">Últimas Obras</span>
+                      <v-spacer></v-spacer>
+                      <v-btn variant="text" color="primary" size="small" @click="navigate('works')">
+                        Ver todas
+                      </v-btn>
+                    </v-card-title>
+                    <v-data-table
+                      :headers="recentHeaders"
+                      :items="recentWorks"
+                      :hide-default-footer="true"
+                      density="comfortable"
+                      @click:row="openWork"
+                    ></v-data-table>
+                  </v-card>
+                </v-col>
+                <v-col cols="12" md="5">
+                  <v-card class="rounded-xl" elevation="1">
+                    <v-card-title class="text-subtitle-1 font-weight-bold">Ações Rápidas</v-card-title>
+                    <v-card-text>
+                      <v-btn color="primary" block class="mb-2" prepend-icon="mdi-plus" @click="openClientDialog()">
+                        Novo Cliente
+                      </v-btn>
+                      <v-btn color="secondary" block class="mb-2" prepend-icon="mdi-plus" @click="navigate('works')">
+                        Nova Obra
+                      </v-btn>
+                      <v-btn variant="tonal" block prepend-icon="mdi-sync" :loading="loading" @click="loadAll">
+                        Atualizar Dados
+                      </v-btn>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+              </v-row>
+            </template>
 
-        <div class="panel">
-          <p class="panel-title">Pedidos gerados</p>
-          <table>
-            <thead>
-              <tr><th>Código</th><th class="num">Perfis</th><th class="num">Vidros</th><th class="num">Componentes</th><th class="num">Total</th><th>Status</th></tr>
-            </thead>
-            <tbody id="ordersTableBodyDetail"></tbody>
-          </table>
-          <div class="empty-state" id="ordersDetailEmpty" style="display:none;">Nenhum pedido gerado ainda.</div>
-        </div>
-      </div>
-    </section>
+            <!-- ============ CLIENTES ============ -->
+            <template v-else-if="currentView === 'clients'">
+              <v-card class="rounded-xl" elevation="1">
+                <v-card-title class="d-flex align-center">
+                  <span class="text-subtitle-1 font-weight-bold">Clientes</span>
+                  <v-spacer></v-spacer>
+                  <v-text-field
+                    v-model="clientSearch"
+                    label="Buscar"
+                    prepend-inner-icon="mdi-magnify"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    class="mr-3 client-search"
+                  ></v-text-field>
+                  <v-btn color="primary" prepend-icon="mdi-plus" @click="openClientDialog()">Novo Cliente</v-btn>
+                </v-card-title>
+                <v-data-table
+                  :headers="clientHeaders"
+                  :items="filteredClients"
+                  :search="clientSearch"
+                  density="comfortable"
+                  @click:row="selectClient"
+                  class="table-clickable"
+                >
+                  <template v-slot:item.actions="{ item }">
+                    <v-btn icon="mdi-pencil" variant="text" size="small" @click.stop="openClientDialog(item)"></v-btn>
+                    <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click.stop="deleteClient(item)"></v-btn>
+                  </template>
+                </v-data-table>
+              </v-card>
+            </template>
 
-    <!-- ---------- ORÇAMENTOS (visão geral) ---------- -->
-    <section class="page" id="pageBudgets">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Orçamentos</h1>
-          <p class="page-sub">Todos os orçamentos gerados, por obra</p>
-        </div>
-      </div>
-      <div class="panel">
-        <table>
-          <thead>
-            <tr><th>Obra</th><th>Data</th><th class="num">Total</th><th>Status</th></tr>
-          </thead>
-          <tbody id="allBudgetsTableBody"></tbody>
-        </table>
-        <div class="empty-state" id="allBudgetsEmpty" style="display:none;">Nenhum orçamento gerado ainda.</div>
-      </div>
-    </section>
+            <!-- ============ OBRAS ============ -->
+            <template v-else-if="currentView === 'works'">
+              <v-card class="rounded-xl" elevation="1">
+                <v-card-title class="d-flex align-center">
+                  <span class="text-subtitle-1 font-weight-bold">Obras</span>
+                  <v-spacer></v-spacer>
+                  <v-select
+                    v-model="worksClientFilter"
+                    :items="clients"
+                    item-title="name"
+                    item-value="id"
+                    label="Filtrar por cliente"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    clearable
+                    class="mr-3 client-search"
+                  ></v-select>
+                  <v-btn color="primary" prepend-icon="mdi-plus" @click="openWorkDialog()">Nova Obra</v-btn>
+                </v-card-title>
+                <v-data-table
+                  :headers="workHeaders"
+                  :items="filteredWorks"
+                  density="comfortable"
+                  @click:row="openWork"
+                  class="table-clickable"
+                >
+                  <template v-slot:item.status="{ item }">
+                    <v-chip :color="statusColor(item.status)" size="small">{{ statusLabel(item.status) }}</v-chip>
+                  </template>
+                  <template v-slot:item.budget_price="{ item }">
+                    {{ money(item.budget_price) }}
+                  </template>
+                  <template v-slot:item.actions="{ item }">
+                    <v-btn icon="mdi-pencil" variant="text" size="small" @click.stop="openWorkDialog(item)"></v-btn>
+                    <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click.stop="deleteWork(item)"></v-btn>
+                  </template>
+                </v-data-table>
+              </v-card>
+            </template>
 
-    <!-- ---------- PEDIDOS (visão geral) ---------- -->
-    <section class="page" id="pageOrders">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Pedidos</h1>
-          <p class="page-sub">Vendas geradas a partir de orçamentos aprovados</p>
-        </div>
-      </div>
-      <div class="panel">
-        <table>
-          <thead>
-            <tr><th>Código</th><th>Obra</th><th class="num">Total</th><th>Status</th></tr>
-          </thead>
-          <tbody id="allOrdersTableBody"></tbody>
-        </table>
-        <div class="empty-state" id="allOrdersEmpty" style="display:none;">Nenhum pedido gerado ainda.</div>
-      </div>
-    </section>
+            <!-- ============ DETALHE DA OBRA ============ -->
+            <template v-else-if="currentView === 'workDetail'">
+              <v-row class="mb-3">
+                <v-col cols="12">
+                  <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="backToWorks" class="mb-2">
+                    Voltar às obras
+                  </v-btn>
+                  <v-card class="rounded-xl" elevation="1">
+                    <v-card-title class="d-flex align-center flex-wrap">
+                      <div>
+                        <span class="text-h6 font-weight-bold">{{ currentWork.code }} - {{ currentWork.name }}</span>
+                        <div class="text-caption text-medium-emphasis">
+                          Cliente: {{ currentWork.client ? currentWork.client.name : '-' }}
+                          <v-chip :color="statusColor(currentWork.status)" size="x-small" class="ml-2">
+                            {{ statusLabel(currentWork.status) }}
+                          </v-chip>
+                        </div>
+                      </div>
+                      <v-spacer></v-spacer>
+                      <div class="text-right">
+                        <div class="text-h6 font-weight-bold text-primary">{{ money(currentWork.budget_price) }}</div>
+                        <div class="text-caption text-medium-emphasis">Orçamento</div>
+                      </div>
+                    </v-card-title>
+                  </v-card>
+                </v-col>
+              </v-row>
 
-  </main>
-</div>
+              <v-card class="rounded-xl" elevation="1">
+                <v-tabs v-model="workTab" color="primary">
+                  <v-tab value="typologies"><v-icon start>mdi-door</v-icon>Tipologias</v-tab>
+                  <v-tab value="materials"><v-icon start>mdi-package-variant</v-icon>Lista de Compras</v-tab>
+                  <v-tab value="budgets"><v-icon start>mdi-file-document-outline</v-icon>Orçamentos</v-tab>
+                  <v-tab value="orders"><v-icon start>mdi-sale</v-icon>Vendas</v-tab>
+                </v-tabs>
 
-<!-- ============ MODAIS ============ -->
+                <v-window v-model="workTab">
+                  <!-- TIPOLOGIAS -->
+                  <v-window-item value="typologies">
+                    <v-card-text>
+                      <v-btn color="primary" prepend-icon="mdi-plus" @click="openTypologyDialog()" class="mb-4">
+                        Adicionar Tipologia
+                      </v-btn>
+                      <v-data-table
+                        v-if="workTypologies.length"
+                        :headers="typologyHeaders"
+                        :items="workTypologies"
+                        density="comfortable"
+                      >
+                        <template v-slot:item.typology_name="{ item }">
+                          <div class="font-weight-medium">{{ item.typology ? item.typology.name : item.params.name }}</div>
+                          <div class="text-caption text-medium-emphasis">{{ item.line_name || '' }}</div>
+                        </template>
+                        <template v-slot:item.dimensions="{ item }">
+                          {{ item.width }} x {{ item.height }}
+                          <div class="text-caption text-medium-emphasis">Qtd: {{ item.quantity }}</div>
+                        </template>
+                        <template v-slot:item.profile_color="{ item }">{{ item.profile_color || '-' }}</template>
+                        <template v-slot:item.glass_type="{ item }">{{ item.glass_type || '-' }}</template>
+                        <template v-slot:item.actions="{ item }">
+                          <v-btn icon="mdi-pencil" variant="text" size="small" @click="openTypologyDialog(item)"></v-btn>
+                          <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="removeTypology(item)"></v-btn>
+                        </template>
+                      </v-data-table>
+                      <v-empty-state v-else icon="mdi-door" title="Nenhuma tipologia"
+                        text="Adicione tipologias para calcular os materiais da obra."></v-empty-state>
+                    </v-card-text>
+                  </v-window-item>
 
-<div class="modal-overlay" id="modalClient">
-  <div class="modal">
-    <button class="modal-close" data-close="modalClient">&times;</button>
-    <p class="modal-title">Novo cliente</p>
-    <div class="field"><label>Nome</label><input type="text" id="clientName"></div>
-    <div class="grid-2">
-      <div class="field"><label>Telefone</label><input type="text" id="clientPhone"></div>
-      <div class="field"><label>E-mail</label><input type="email" id="clientEmail"></div>
-    </div>
-    <div class="field"><label>Endereço</label><input type="text" id="clientAddress"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" data-close="modalClient">Cancelar</button>
-      <button class="btn btn-primary" id="saveClientBtn">Salvar cliente</button>
-    </div>
+                  <!-- LISTA DE COMPRAS / MATERIAIS -->
+                  <v-window-item value="materials">
+                    <v-card-text>
+                      <div class="d-flex align-center mb-4 flex-wrap">
+                        <v-btn color="primary" prepend-icon="mdi-plus" @click="openMaterialDialog()" class="mr-3">
+                          Adicionar Material
+                        </v-btn>
+                        <v-btn color="secondary" prepend-icon="mdi-calculator" @click="calcMaterials" :loading="loading">
+                          Calcular a partir das tipologias
+                        </v-btn>
+                        <v-spacer></v-spacer>
+                        <div class="text-subtitle-1 font-weight-bold text-primary">{{ money(materialsTotal) }}</div>
+                      </div>
+                      <v-data-table
+                        v-if="materials.length"
+                        :headers="materialHeaders"
+                        :items="materials"
+                        density="comfortable"
+                      >
+                        <template v-slot:item.category="{ item }">{{ item.category }}</template>
+                        <template v-slot:item.quantity="{ item }">{{ item.quantity }} {{ item.unit }}</template>
+                        <template v-slot:item.total_cost="{ item }">{{ money(item.total_cost) }}</template>
+                        <template v-slot:item.actions="{ item }">
+                          <v-btn icon="mdi-pencil" variant="text" size="small" @click="openMaterialDialog(item)"></v-btn>
+                          <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="deleteMaterial(item)"></v-btn>
+                        </template>
+                      </v-data-table>
+                      <v-empty-state v-else icon="mdi-package-variant" title="Nenhum material"
+                        text="Adicione materiais manualmente ou calcule a partir das tipologias."></v-empty-state>
+                    </v-card-text>
+                  </v-window-item>
+
+                  <!-- ORÇAMENTOS -->
+                  <v-window-item value="budgets">
+                    <v-card-text>
+                      <v-btn color="primary" prepend-icon="mdi-plus" @click="openBudgetDialog()" class="mb-4"
+                        :disabled="materials.length === 0">
+                        Gerar Orçamento
+                      </v-btn>
+                      <v-data-table
+                        v-if="budgets.length"
+                        :headers="budgetHeaders"
+                        :items="budgets"
+                        density="comfortable"
+                      >
+                        <template v-slot:item.production_cost="{ item }">{{ money(item.production_cost) }}</template>
+                        <template v-slot:item.installation_cost="{ item }">{{ money(item.installation_cost) }}</template>
+                        <template v-slot:item.gain_percentage="{ item }">{{ item.gain_percentage }}%</template>
+                        <template v-slot:item.total="{ item }">
+                          <span class="font-weight-bold text-primary">{{ money(budgetTotal(item)) }}</span>
+                        </template>
+                        <template v-slot:item.actions="{ item }">
+                          <v-btn icon="mdi-sale" variant="text" size="small" color="success" title="Gerar venda"
+                            @click="generateOrderFromBudget(item)"></v-btn>
+                          <v-btn icon="mdi-delete" variant="text" size="small" color="error"
+                            @click="deleteBudget(item)"></v-btn>
+                        </template>
+                      </v-data-table>
+                      <v-empty-state v-else icon="mdi-file-document-outline" title="Nenhum orçamento"
+                        text="Gere um orçamento a partir da lista de materiais."></v-empty-state>
+                    </v-card-text>
+                  </v-window-item>
+
+                  <!-- VENDAS -->
+                  <v-window-item value="orders">
+                    <v-card-text>
+                      <v-data-table
+                        v-if="orders.length"
+                        :headers="orderHeaders"
+                        :items="orders"
+                        density="comfortable"
+                      >
+                        <template v-slot:item.components_own_cost="{ item }">{{ money(item.components_own_cost) }}</template>
+                        <template v-slot:item.glasses_own_cost="{ item }">{{ money(item.glasses_own_cost) }}</template>
+                        <template v-slot:item.profiles_own_cost="{ item }">{{ money(item.profiles_own_cost) }}</template>
+                        <template v-slot:item.total="{ item }">
+                          <span class="font-weight-bold text-primary">{{ money(item.total) }}</span>
+                        </template>
+                        <template v-slot:item.actions="{ item }">
+                          <v-btn icon="mdi-delete" variant="text" size="small" color="error"
+                            @click="deleteOrder(item)"></v-btn>
+                        </template>
+                      </v-data-table>
+                      <v-empty-state v-else icon="mdi-sale" title="Nenhuma venda"
+                        text="As vendas são geradas a partir de orçamentos aprovados."></v-empty-state>
+                    </v-card-text>
+                  </v-window-item>
+                </v-window>
+              </v-card>
+            </template>
+          </v-container>
+        </v-main>
+
+        <!-- ============ DIALOGS ============ -->
+        <!-- Cliente -->
+        <v-dialog v-model="clientDialog" max-width="520">
+          <v-card class="rounded-xl">
+            <v-card-title class="text-subtitle-1 font-weight-bold">{{ clientForm.id ? 'Editar Cliente' : 'Novo Cliente' }}</v-card-title>
+            <v-card-text>
+              <v-form ref="clientFormRef" @submit.prevent="saveClient">
+                <v-text-field v-model="clientForm.name" label="Nome *" variant="outlined" class="mb-2" :rules="[rules.required]"></v-text-field>
+                <v-text-field v-model="clientForm.phone" label="Telefone" variant="outlined" class="mb-2"></v-text-field>
+                <v-text-field v-model="clientForm.email" label="E-mail" type="email" variant="outlined" class="mb-2"></v-text-field>
+                <v-text-field v-model="clientForm.address" label="Endereço" variant="outlined" class="mb-2"></v-text-field>
+                <v-textarea v-model="clientForm.notes" label="Observações" variant="outlined"></v-textarea>
+              </v-form>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn variant="text" @click="clientDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="saveClient" :loading="loading">Salvar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Obra -->
+        <v-dialog v-model="workDialog" max-width="520">
+          <v-card class="rounded-xl">
+            <v-card-title class="text-subtitle-1 font-weight-bold">{{ workForm.id ? 'Editar Obra' : 'Nova Obra' }}</v-card-title>
+            <v-card-text>
+              <v-form ref="workFormRef" @submit.prevent="saveWork">
+                <v-select v-model="workForm.client_id" :items="clients" item-title="name" item-value="id"
+                  label="Cliente *" variant="outlined" class="mb-2" :rules="[rules.required]"></v-select>
+                <v-text-field v-model="workForm.name" label="Nome da Obra *" variant="outlined" class="mb-2" :rules="[rules.required]"></v-text-field>
+                <v-text-field v-model="workForm.code" label="Código" variant="outlined" class="mb-2"></v-text-field>
+                <v-select v-model="workForm.status" :items="workStatusOptions" label="Status" variant="outlined" class="mb-2"></v-select>
+                <v-text-field v-model.number="workForm.budget_price" label="Valor de Orçamento" type="number" prefix="R$" variant="outlined" class="mb-2"></v-text-field>
+                <v-textarea v-model="workForm.notes" label="Observações" variant="outlined"></v-textarea>
+              </v-form>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn variant="text" @click="workDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="saveWork" :loading="loading">Salvar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Tipologia -->
+        <v-dialog v-model="typologyDialog" max-width="640">
+          <v-card class="rounded-xl">
+            <v-card-title class="text-subtitle-1 font-weight-bold">
+              {{ typologyForm.id ? 'Editar Tipologia' : 'Adicionar Tipologia' }}
+            </v-card-title>
+            <v-card-text>
+              <v-form ref="typologyFormRef" @submit.prevent="saveTypology">
+                <v-select v-model="typologyForm.typology_id" :items="typologyCatalog" item-title="name" item-value="id"
+                  label="Tipologia *" variant="outlined" class="mb-2" :rules="[rules.required]"></v-select>
+                <v-select v-if="selectedCatalogTypology" v-model="typologyForm.line_id" :items="selectedCatalogTypology.lines"
+                  item-title="name" item-value="id" label="Linha (Suprema / Gold)" variant="outlined" class="mb-2"></v-select>
+                <v-row>
+                  <v-col cols="6">
+                    <v-text-field v-model.number="typologyForm.width" label="Largura (mm)" type="number" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                  <v-col cols="6">
+                    <v-text-field v-model.number="typologyForm.height" label="Altura (mm)" type="number" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-row>
+                  <v-col cols="6">
+                    <v-text-field v-model="typologyForm.profile_color" label="Cor do Perfil" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                  <v-col cols="6">
+                    <v-text-field v-model="typologyForm.glass_type" label="Tipo de Vidro" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-text-field v-model.number="typologyForm.quantity" label="Quantidade" type="number" variant="outlined" class="mb-2"></v-text-field>
+                <v-textarea v-model="typologyForm.notes" label="Observações" variant="outlined"></v-textarea>
+              </v-form>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn variant="text" @click="typologyDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="saveTypology" :loading="loading">Salvar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Material -->
+        <v-dialog v-model="materialDialog" max-width="560">
+          <v-card class="rounded-xl">
+            <v-card-title class="text-subtitle-1 font-weight-bold">
+              {{ materialForm.id ? 'Editar Material' : 'Adicionar Material' }}
+            </v-card-title>
+            <v-card-text>
+              <v-form ref="materialFormRef" @submit.prevent="saveMaterial">
+                <v-select v-model="materialForm.category" :items="materialCategories" label="Categoria" variant="outlined" class="mb-2"></v-select>
+                <v-text-field v-model="materialForm.name" label="Descrição *" variant="outlined" class="mb-2" :rules="[rules.required]"></v-text-field>
+                <v-text-field v-model="materialForm.color" label="Cor / Acabamento" variant="outlined" class="mb-2"></v-text-field>
+                <v-row>
+                  <v-col cols="4">
+                    <v-text-field v-model.number="materialForm.quantity" label="Qtd" type="number" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                  <v-col cols="4">
+                    <v-select v-model="materialForm.unit" :items="['un','m','m²','kg','pt']" label="Un." variant="outlined" class="mb-2"></v-select>
+                  </v-col>
+                  <v-col cols="4">
+                    <v-text-field v-model.number="materialForm.unit_cost" label="Custo" type="number" prefix="R$" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-textarea v-model="materialForm.notes" label="Observações" variant="outlined"></v-textarea>
+              </v-form>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn variant="text" @click="materialDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="saveMaterial" :loading="loading">Salvar</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- Orçamento -->
+        <v-dialog v-model="budgetDialog" max-width="560">
+          <v-card class="rounded-xl">
+            <v-card-title class="text-subtitle-1 font-weight-bold">Gerar Orçamento</v-card-title>
+            <v-card-text>
+              <v-form ref="budgetFormRef" @submit.prevent="saveBudget">
+                <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                  Custos base calculados a partir da lista de compras: <b>{{ money(materialsTotal) }}</b>
+                </v-alert>
+                <v-row>
+                  <v-col cols="6">
+                    <v-text-field v-model.number="budgetForm.production_cost" label="Custo de Produção" type="number" prefix="R$" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                  <v-col cols="6">
+                    <v-text-field v-model.number="budgetForm.installation_cost" label="Custo de Instalação" type="number" prefix="R$" variant="outlined" class="mb-2"></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-text-field v-model.number="budgetForm.gain_percentage" label="Percentual de Ganho (%)" type="number" suffix="%" variant="outlined" class="mb-2"></v-text-field>
+                <v-divider class="my-3"></v-divider>
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-body-1">Total estimado do orçamento</span>
+                  <span class="text-h6 font-weight-bold text-primary">{{ money(budgetFormPreviewTotal) }}</span>
+                </div>
+              </v-form>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer></v-spacer>
+              <v-btn variant="text" @click="budgetDialog = false">Cancelar</v-btn>
+              <v-btn color="primary" @click="saveBudget" :loading="loading">Gerar Orçamento</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+      </v-layout>
+
+      <!-- Snackbar -->
+      <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="4000" location="bottom right">
+        {{ snackbar.message }}
+      </v-snackbar>
+    </v-app>
   </div>
-</div>
 
-<div class="modal-overlay" id="modalWork">
-  <div class="modal">
-    <button class="modal-close" data-close="modalWork">&times;</button>
-    <p class="modal-title">Nova obra</p>
-    <div class="field"><label>Nome da obra</label><input type="text" id="workName"></div>
-    <div class="field">
-      <label>Cliente</label>
-      <select id="workClientSelect"></select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" data-close="modalWork">Cancelar</button>
-      <button class="btn btn-primary" id="saveWorkBtn">Criar obra</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modalTypology">
-  <div class="modal">
-    <button class="modal-close" data-close="modalTypology">&times;</button>
-    <p class="modal-title">Adicionar tipologia</p>
-
-    <div class="field">
-      <label>Linha</label>
-      <select id="typoLine">
-        <option value="Suprema">Suprema (esquadria de alumínio)</option>
-        <option value="Temperado">Temperado (vidro)</option>
-      </select>
-    </div>
-    <div class="field"><label>Nome da tipologia</label><input type="text" id="typoName" placeholder="Ex: Janela de correr 2 folhas"></div>
-    <div class="grid-2">
-      <div class="field"><label>Largura (mm)</label><input type="number" id="typoWidth"></div>
-      <div class="field"><label>Altura (mm)</label><input type="number" id="typoHeight"></div>
-    </div>
-    <div class="grid-2">
-      <div class="field" id="fieldProfileColor"><label>Cor do perfil</label><input type="text" id="typoProfileColor" placeholder="Ex: Branco Brilhante RAL9003"></div>
-      <div class="field" id="fieldGlassType"><label>Tipo de vidro</label><input type="text" id="typoGlassType" placeholder="Ex: Temperado 8mm Incolor"></div>
-    </div>
-    <div class="grid-2">
-      <div class="field"><label>Quantidade</label><input type="number" id="typoQty" value="1"></div>
-      <div class="field"><label>Valor unitário (R$)</label><input type="number" step="0.01" id="typoUnitPrice"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" data-close="modalTypology">Cancelar</button>
-      <button class="btn btn-primary" id="saveTypologyBtn">Adicionar</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="modalMaterial">
-  <div class="modal">
-    <button class="modal-close" data-close="modalMaterial">&times;</button>
-    <p class="modal-title">Adicionar material</p>
-
-    <div class="field">
-      <label>Categoria</label>
-      <select id="matCategory">
-        <option value="Perfis">Perfis</option>
-        <option value="Componentes">Componentes</option>
-        <option value="Vidros">Vidros</option>
-      </select>
-    </div>
-    <div class="field"><label>Descrição</label><input type="text" id="matDescription" placeholder="Ex: Perfil Marco Suprema"></div>
-    <div class="grid-2">
-      <div class="field"><label>Cor / acabamento</label><input type="text" id="matColor"></div>
-      <div class="field"><label>Unidade</label><input type="text" id="matUnit" value="un" placeholder="un, m, m2, kg"></div>
-    </div>
-    <div class="grid-2">
-      <div class="field"><label>Quantidade</label><input type="number" step="0.001" id="matQty"></div>
-      <div class="field"><label>Custo unitário (R$)</label><input type="number" step="0.01" id="matUnitCost"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" data-close="modalMaterial">Cancelar</button>
-      <button class="btn btn-primary" id="saveMaterialBtn">Adicionar</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script src="config.js"></script>
-<script src="app.js"></script>
+  <script src="https://unpkg.com/vue@3.4.31/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@3.6.8/dist/vuetify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

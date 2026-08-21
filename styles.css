@@ -1,0 +1,28 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', 'Segoe UI', sans-serif;
+  background: #f5f7fa;
+}
+
+.login-wrap {
+  background: linear-gradient(135deg, #1565c0 0%, #0d47a1 55%, #0a2f6d 100%);
+  min-height: 100vh;
+}
+
+.app-main {
+  background: #f5f7fa;
+}
+
+.table-clickable .v-data-table__tbody tr {
+  cursor: pointer;
+}
+
+.client-search {
+  max-width: 320px;
+}
+
+.v-data-table td,
+.v-data-table th {
+  white-space: nowrap;
+}
