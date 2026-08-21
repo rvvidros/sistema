@@ -1,6 +1,6 @@
-# Alô Serralheiro — Mapeamento da API (atualizado)
+# Wolf Serralheiro — Mapeamento da API (atualizado)
 
-Base: `https://sistema.aloserralheiro.com.br` (versão `v3.53.8`)
+
 
 ## Autenticação
 
